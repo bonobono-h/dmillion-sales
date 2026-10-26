@@ -88,7 +88,7 @@
       <h1>영업 관리 가입</h1>
       <p>회사 메일 아이디와 이름, 비밀번호를 정하세요. 가입하면 관리자가 승인한 뒤부터 볼 수 있습니다.</p>
       <label>아이디 (회사 메일 앞부분)<span class="suffix"><input name="id" autocomplete="username" required autocapitalize="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" title="영문·숫자·점·밑줄·하이픈만"><span>@${dom}</span></span></label>
-      <label>이름<input name="nm" autocomplete="name" required maxlength="20" placeholder="예: 김웅섭"></label>
+      <label>이름<input name="nm" autocomplete="name" required maxlength="20"></label>
       <label>비밀번호 (8자 이상)<input name="a" type="password" autocomplete="new-password" minlength="8" required></label>
       <label>비밀번호 한 번 더<input name="b" type="password" autocomplete="new-password" minlength="8" required></label>
       <div class="msg" role="alert"></div>
