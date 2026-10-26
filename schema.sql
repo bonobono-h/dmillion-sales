@@ -7,12 +7,13 @@
 --    admin = 관리자 (모든 수정·삭제, 단가·원가, 목표, 사람 관리)
 --    sales = 영업담당 (업체·미팅·과제 입력과 수정, 연락처 열람)
 --    view  = 보기 전용 (연락처 가려짐)
+--    pending = 승인 대기 (가입만 하고 아무것도 못 봄, 새 가입자의 기본값)
 -- =========================================================
 create table if not exists public.members (
   user_id    uuid primary key references auth.users(id) on delete cascade,
   login      text not null unique,
   name       text not null,
-  role       text not null default 'view' check (role in ('admin', 'sales', 'view')),
+  role       text not null default 'pending' check (role in ('admin', 'sales', 'view', 'pending')),
   created_at timestamptz not null default now()
 );
 alter table public.members enable row level security;
@@ -22,13 +23,15 @@ create or replace function public.my_role() returns text
 language sql stable security definer set search_path = public
 as $$ select role from public.members where user_id = auth.uid() $$;
 
--- 대시보드에서 계정을 만들면 명단에 '보기 전용'으로 자동 추가
+-- 가입하면 명단에 '승인 대기'로 자동 추가 (이름은 가입할 때 쓴 이름)
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
   insert into public.members (user_id, login, name, role)
-  values (new.id, split_part(new.email, '@', 1), split_part(new.email, '@', 1), 'view')
+  values (new.id, split_part(new.email, '@', 1),
+          coalesce(nullif(left(trim(new.raw_user_meta_data ->> 'name'), 20), ''), split_part(new.email, '@', 1)),
+          'pending')
   on conflict (user_id) do nothing;
   return new;
 end $$;
@@ -38,12 +41,12 @@ create trigger on_auth_user_created after insert on auth.users
 
 -- 이미 있던 계정도 명단에 채우기
 insert into public.members (user_id, login, name, role)
-select id, split_part(email, '@', 1), split_part(email, '@', 1), 'view' from auth.users
+select id, split_part(email, '@', 1), split_part(email, '@', 1), 'pending' from auth.users
 on conflict (user_id) do nothing;
 
 drop policy if exists "members read" on public.members;
 create policy "members read" on public.members for select to authenticated
-  using (public.my_role() is not null);
+  using (user_id = auth.uid() or public.my_role() in ('admin', 'sales', 'view'));
 drop policy if exists "members admin update" on public.members;
 create policy "members admin update" on public.members for update to authenticated
   using (public.my_role() = 'admin') with check (public.my_role() = 'admin');
@@ -80,7 +83,7 @@ create trigger docs_touch before insert or update on public.docs
 create or replace function public.can_read(p text) returns boolean
 language sql stable as $$
   select case
-    when public.my_role() is null then false
+    when coalesce(public.my_role(), 'pending') = 'pending' then false
     when p like 'data/costs/%' then public.my_role() = 'admin'
     when p like 'data/contacts/%' or p like 'data/log/%' then public.my_role() in ('admin', 'sales')
     else true
@@ -90,7 +93,7 @@ language sql stable as $$
 create or replace function public.can_write(p text) returns boolean
 language sql stable as $$
   select case
-    when public.my_role() is null then false
+    when coalesce(public.my_role(), 'pending') = 'pending' then false
     when p like 'data/costs/%' or p like 'targets/%' or p like 'sync/%' then public.my_role() = 'admin'
     else public.my_role() in ('admin', 'sales')
   end $$;
@@ -147,7 +150,7 @@ on conflict (id) do nothing;
 
 drop policy if exists "files read" on storage.objects;
 create policy "files read" on storage.objects for select to authenticated
-  using (bucket_id = 'files' and public.my_role() is not null);
+  using (bucket_id = 'files' and public.my_role() in ('admin', 'sales', 'view'));
 drop policy if exists "files upload" on storage.objects;
 create policy "files upload" on storage.objects for insert to authenticated
   with check (bucket_id = 'files' and public.my_role() in ('admin', 'sales'));
@@ -156,7 +159,7 @@ create policy "files delete" on storage.objects for delete to authenticated
   using (bucket_id = 'files' and public.my_role() in ('admin', 'sales'));
 
 -- =========================================================
--- 4. 첫 관리자 지정 — 아래 'hryoon' 을 홍의 로그인 아이디(메일 @ 앞부분)로 바꿔서
---    계정을 만든 뒤에 이 줄만 다시 실행하세요.
+-- 4. 첫 관리자 지정 — 가입한 뒤 아래 'hryoon' 을 본인 아이디(메일 @ 앞부분)로 바꿔 이 줄만 실행하세요.
+--    그다음부터 다른 사람 승인은 사이트의 권한·변경 기록 → 사람 관리에서 합니다.
 -- =========================================================
 -- update public.members set role = 'admin', name = '윤홍렬' where login = 'hryoon';

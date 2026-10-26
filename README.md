@@ -18,13 +18,13 @@
 ### 1. Supabase
 1. [supabase.com](https://supabase.com)에서 새 프로젝트를 만듭니다. 지역은 Seoul(Northeast Asia)로 합니다.
 2. **SQL Editor → New query**에 `schema.sql` 내용을 전부 붙여 넣고 **Run**을 누릅니다.
-3. **Authentication → Sign In / Providers**에서 **Allow new users to sign up**을 끕니다. 이렇게 하면 관리자가 만든 계정만 들어올 수 있습니다.
+3. **Authentication → Sign In / Providers**에서 **Allow new users to sign up**은 켜고, Email의 **Confirm email**은 끕니다. 새로 가입한 사람은 관리자가 승인하기 전까지 아무것도 볼 수 없습니다.
 4. **Project Settings → API**에서 Project URL과 Publishable 키(예전 anon 키)를 `config.js`에 넣습니다.
    - Publishable 키는 원래 공개용이라 저장소에 올려도 됩니다.
    - **Secret 키·service_role 키·DB 비밀번호는 절대 어디에도 넣지 마세요.**
 
 ### 2. 첫 관리자
-1. **Authentication → Users → Add user**를 누르고 본인 회사 메일과 비밀번호를 넣습니다. **Auto Confirm User**에 체크합니다.
+1. 사이트의 **처음이면 가입하기**로 본인 계정을 만듭니다. Supabase **Authentication → Users → Add user**로 만들어도 됩니다.
 2. SQL Editor에서 다음 한 줄을 실행합니다. 아이디는 메일의 @ 앞부분입니다.
    ```sql
    update public.members set role = 'admin', name = '윤홍렬' where login = 'hryoon';
@@ -44,13 +44,15 @@
 
 ---
 
-## 사람 추가
+## 사람 추가 (각자 가입 → 관리자 승인)
 
-1. Supabase **Authentication → Users → Add user**에서 회사 메일과 임시 비밀번호를 넣고 **Auto Confirm User**에 체크합니다.
-2. 영업 관리 **권한·변경 기록 → 사람 관리**에 '보기 전용'으로 새로 나타납니다. 이름과 권한을 정하고 **저장**을 누릅니다.
-3. 본인에게 아이디(메일 @ 앞부분)와 임시 비밀번호를 알려 줍니다. 로그인한 뒤 **권한·변경 기록 → 내 계정 → 비밀번호 변경**으로 바꾸게 합니다.
+1. 영업팀에게 사이트 주소를 보냅니다. 각자 로그인 화면의 **처음이면 가입하기**에서 아이디(회사 메일 @ 앞부분), 이름, 비밀번호를 정합니다.
+2. 가입하면 '승인 대기' 상태가 됩니다. 이때는 아무 데이터도 볼 수 없습니다.
+3. 관리자 화면 오른쪽 위에 **승인 대기 N명**이 뜹니다. 누르면 사람 관리로 갑니다. 본인이 맞는지 확인하고 권한(영업담당·보기 전용)을 골라 **저장**합니다.
+4. 가입한 사람이 **승인됐는지 다시 확인**을 누르면 바로 들어갑니다.
 
-사람을 내보낼 때는 Supabase Users에서 그 계정을 삭제합니다. 명단에서도 함께 빠집니다.
+- 사람을 내보낼 때는 권한을 '승인 대기'로 바꾸면 바로 막힙니다. 계정을 아예 지우려면 Supabase **Authentication → Users**에서 삭제합니다.
+- Supabase 설정: **Authentication → Sign In / Providers**에서 **Allow new users to sign up**은 켜고, Email 항목의 **Confirm email**은 끕니다. 회사 메일로 인증 메일이 가지 않아도 가입되게 하는 설정입니다. 대신 관리자 승인으로 막습니다.
 
 ## 백업
 

@@ -18,7 +18,7 @@
   const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const clone = v => v == null ? v : JSON.parse(JSON.stringify(v));
   const err = (code, message) => Object.assign(new Error(message || code), { code });
-  const ROLE_KO = { admin: '관리자', sales: '영업담당', view: '보기 전용' };
+  const ROLE_KO = { admin: '관리자', sales: '영업담당', view: '보기 전용', pending: '승인 대기' };
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   // ---------------------------------------------------------------- 화면 스타일
@@ -39,6 +39,8 @@
   .dm-me b{color:var(--ink,#1b1f24)}
   .dm-me button{all:unset;cursor:pointer;color:var(--ink2,#6b7480);text-decoration:underline;text-underline-offset:2px;font-size:12.5px}
   .dm-me button:focus-visible{outline:2px solid var(--accent,#2f5bd7)}
+  .dm-me .dm-pend{text-decoration:none;background:var(--warn-soft,#fdf1dd);color:var(--warn,#a86100);font-weight:700;border-radius:999px;padding:2px 10px}
+  .dm-admin tr.pend td{background:var(--warn-soft,#fdf1dd)}
   .dm-admin{margin-top:22px;display:flex;flex-direction:column;gap:14px}
   .dm-admin h3{margin:0}
   .dm-admin table{border-collapse:collapse;width:100%;font-size:13px}
@@ -61,14 +63,16 @@
   function showLogin(msg) {
     const o = overlay(`<form autocomplete="on">
       <h1>디밀리언 영업 관리</h1>
-      <p>영업팀 계정으로 로그인하세요. 계정이 없으면 관리자에게 요청하세요.</p>
+      <p>영업팀 계정으로 로그인하세요.</p>
       <label>아이디<span class="suffix"><input name="id" autocomplete="username" required autocapitalize="off" spellcheck="false"><span>@${esc(CFG.emailDomain || 'dmillions.co.kr')}</span></span></label>
       <label>비밀번호<input name="pw" type="password" autocomplete="current-password" required></label>
       <div class="msg" role="alert">${esc(msg || '')}</div>
       <button type="submit">로그인</button>
+      <button type="button" class="ghost" data-dm="signup">처음이면 가입하기</button>
     </form>`);
     const f = o.querySelector('form');
     f.id.focus();
+    f.querySelector('[data-dm=signup]').onclick = () => showSignup();
     f.onsubmit = async e => {
       e.preventDefault();
       const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = '확인 중…';
@@ -78,11 +82,52 @@
     };
   }
 
+  function showSignup() {
+    const dom = esc(CFG.emailDomain || 'dmillions.co.kr');
+    const o = overlay(`<form autocomplete="on">
+      <h1>영업 관리 가입</h1>
+      <p>회사 메일 아이디와 이름, 비밀번호를 정하세요. 가입하면 관리자가 승인한 뒤부터 볼 수 있습니다.</p>
+      <label>아이디 (회사 메일 앞부분)<span class="suffix"><input name="id" autocomplete="username" required autocapitalize="off" spellcheck="false" pattern="[A-Za-z0-9._\-]+" title="영문·숫자·점·밑줄·하이픈만"><span>@${dom}</span></span></label>
+      <label>이름<input name="nm" autocomplete="name" required maxlength="20" placeholder="예: 김웅섭"></label>
+      <label>비밀번호 (8자 이상)<input name="a" type="password" autocomplete="new-password" minlength="8" required></label>
+      <label>비밀번호 한 번 더<input name="b" type="password" autocomplete="new-password" minlength="8" required></label>
+      <div class="msg" role="alert"></div>
+      <button type="submit">가입 신청</button>
+      <button type="button" class="ghost" data-dm="back">로그인으로 돌아가기</button>
+    </form>`);
+    const f = o.querySelector('form'); f.id.focus();
+    f.querySelector('[data-dm=back]').onclick = () => showLogin();
+    f.onsubmit = async e => {
+      e.preventDefault(); const m = f.querySelector('.msg');
+      if (f.a.value !== f.b.value) { m.textContent = '비밀번호 두 칸이 다릅니다.'; return; }
+      const b = f.querySelector('button[type=submit]'); b.disabled = true; b.textContent = '신청 중…';
+      const { data, error } = await sb.auth.signUp({ email: toEmail(f.id.value), password: f.a.value, options: { data: { name: f.nm.value.trim() } } });
+      b.disabled = false; b.textContent = '가입 신청';
+      if (error) {
+        const t = error.message || '';
+        m.textContent = /already|registered|exists/i.test(t) ? '이미 가입된 아이디입니다. 로그인으로 돌아가세요.'
+          : /not allowed|disabled/i.test(t) ? '지금은 가입이 막혀 있습니다. 관리자에게 알려 주세요.'
+          : /password/i.test(t) ? '비밀번호를 더 길고 복잡하게 정해 주세요.'
+          : /rate|too many/i.test(t) ? '잠시 후 다시 시도해 주세요.'
+          : '가입하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        return;
+      }
+      if (data.session && data.user) { afterLogin(data.user); return; }
+      overlay(`<div class="box"><h1>가입 신청을 받았습니다</h1><p>메일 인증이 필요한 설정이라 아직 로그인할 수 없습니다. 관리자에게 알려 주세요.</p><button type="button" class="ghost">로그인으로 돌아가기</button></div>`).querySelector('button').onclick = () => showLogin();
+    };
+  }
+
   async function afterLogin(user) {
     const { data, error } = await sb.from('members').select('user_id,login,name,role').eq('user_id', user.id).maybeSingle();
     if (error || !data) {
       const o = overlay(`<div class="box"><h1>아직 명단에 없는 계정입니다</h1><p>${esc(user.email)} 계정은 로그인됐지만 영업팀 명단에 없습니다. 관리자에게 추가를 요청하세요.</p><button type="button" class="ghost">다른 계정으로 로그인</button></div>`);
       o.querySelector('button').onclick = async () => { await sb.auth.signOut(); showLogin(); };
+      return;
+    }
+    if (data.role === 'pending') {
+      const o = overlay(`<div class="box"><h1>승인 기다리는 중</h1><p><b>${esc(data.name)}</b> (${esc(data.login)}) 님, 가입 신청이 들어갔습니다. 관리자가 권한을 정하면 바로 쓸 수 있습니다.</p><button type="button" data-dm="re">승인됐는지 다시 확인</button><button type="button" class="ghost" data-dm="out">로그아웃</button></div>`);
+      o.querySelector('[data-dm=re]').onclick = () => afterLogin(user);
+      o.querySelector('[data-dm=out]').onclick = async () => { await sb.auth.signOut(); showLogin(); };
       return;
     }
     me = { id: user.id, login: data.login, name: data.name, role: data.role };
@@ -98,6 +143,15 @@
     s.innerHTML = `<b>${esc(me.name)}</b><button type="button" data-dm="out">로그아웃</button>`;
     host.prepend(s);
     s.querySelector('[data-dm=out]').onclick = async () => { await sb.auth.signOut(); location.reload(); };
+    if (me.role === 'admin') pendingChip(s);
+  }
+  async function pendingChip(host) {
+    const { count } = await sb.from('members').select('user_id', { count: 'exact', head: true }).eq('role', 'pending');
+    host.querySelector('.dm-pend')?.remove();
+    if (!count) return;
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'dm-pend'; b.textContent = `승인 대기 ${count}명`;
+    b.onclick = () => { const t = [...document.querySelectorAll('#tabs button')].find(x => x.textContent.includes('권한')); t && t.click(); };
+    host.prepend(b);
   }
 
   function changePw() {
@@ -289,8 +343,8 @@
     const mine = `<h3>내 계정</h3><div class="row"><span>${esc(me.name)} · ${esc(me.login)} · ${ROLE_KO[me.role] || ''}</span><button class="btn" type="button" id="dmPw">비밀번호 변경</button></div>`;
     if (me.role !== 'admin') { box.innerHTML = mine; box.querySelector('#dmPw').onclick = changePw; return; }
     box.innerHTML = mine + `<h3>사람 관리</h3><div class="scroll" id="dmPeople">불러오는 중…</div>
-      <div class="note">사람 추가: Supabase 대시보드 → Authentication → Users → <b>Add user</b> → 회사 메일과 임시 비밀번호 입력, <b>Auto Confirm User</b> 체크.
-      추가하면 여기에 '보기 전용'으로 나타나니 이름과 권한을 정하고 저장하세요. 임시 비밀번호는 본인이 로그인 후 오른쪽 위 '비밀번호 변경'으로 바꾸게 하세요.</div>
+      <div class="note">각자 로그인 화면의 <b>처음이면 가입하기</b>로 가입하면 여기에 '승인 대기'로 나타납니다. 본인이 맞는지 확인하고 권한(영업담당·보기 전용)을 골라 <b>저장</b>하세요.
+      승인하지 않을 사람은 '승인 대기'로 두면 아무것도 볼 수 없습니다. 계정을 아예 지우려면 Supabase → Authentication → Users에서 삭제합니다.</div>
       <h3>데이터</h3>
       <div class="row"><button class="btn" type="button" id="dmBackup">전체 백업 내려받기 (JSON)</button>
       <label class="btn" style="cursor:pointer">가져오기 (JSON)<input type="file" id="dmImport" accept=".json,application/json" hidden></label><span class="note" id="dmImportMsg"></span></div>
@@ -301,9 +355,10 @@
     box.querySelector('#dmImport').onchange = e => importFile(e.target.files[0], box.querySelector('#dmImportMsg'));
   }
   async function peopleTable(el) {
-    const { data, error } = await sb.from('members').select('user_id,login,name,role,created_at').order('created_at');
+    const { data: rows, error } = await sb.from('members').select('user_id,login,name,role,created_at').order('created_at');
+    const data = (rows || []).sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
     if (error) { el.textContent = '명단을 불러오지 못했습니다.'; return; }
-    el.innerHTML = `<table><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th></th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}">
+    el.innerHTML = `<table><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th></th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}" class="${r.role === 'pending' ? 'pend' : ''}">
       <td>${esc(r.login)}</td><td><input value="${esc(r.name)}" aria-label="이름"></td>
       <td><select aria-label="권한">${Object.entries(ROLE_KO).map(([k, v]) => `<option value="${k}" ${r.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
       <td><button class="btn" type="button">저장</button></td></tr>`).join('')}</tbody></table>`;
@@ -311,7 +366,7 @@
       const name = tr.querySelector('input').value.trim(), role = tr.querySelector('select').value;
       if (tr.dataset.u === me.id && role !== 'admin' && !confirmSelfDemote()) return;
       const { error } = await sb.from('members').update({ name, role }).eq('user_id', tr.dataset.u);
-      profileCache = null;
+      profileCache = null; if (!error) { tr.classList.toggle('pend', role === 'pending'); const h = document.querySelector('.dm-me'); h && pendingChip(h); }
       alertless(error ? '저장하지 못했습니다' : `${name} · ${ROLE_KO[role]}로 저장했습니다`);
     });
   }
