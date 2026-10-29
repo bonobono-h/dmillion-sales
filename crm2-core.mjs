@@ -29,7 +29,7 @@ export function mappedCompany(row) {
     accountGrade: plain(row['등급']),
     outreachBucket: plain(row['11월 할 일']),
     outreachMethod: plain(row['발송']),
-    market2027: plain(row['2027 시장']),
+    market2027: plain(row['지원공고사업분류'] || row['2027 시장']),
     excelStage: plain(row['사이트 단계']),
     email: plain(row['이메일']), // protected preview only, never put into publicly readable CRM2 profile
     phone: plain(row['전화번호']),
@@ -87,7 +87,7 @@ export function countImportResults(items) {
   return totals;
 }
 export function nextActionFor(company,tasks=[]) {
-  const related=tasks.filter(t=> t.companyId===company._id && !['done','cancelled'].includes(t.status))
+  const related=tasks.filter(t=> t.companyId===company._id && !['done','cancelled','deleted'].includes(t.status))
     .sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
   if(related.length) return {...related[0],origin:'crm2'};
   return plain(company.nextAction)?{title:company.nextAction,dueAt:company.nextDate||null,origin:'legacy'}:null;
