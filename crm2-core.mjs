@@ -5,6 +5,28 @@ export const STAGES = [
 ];
 export const STAGE_LABEL = Object.fromEntries(STAGES);
 export const MARKETS = ['로봇·자동화','제조AI','스마트공장','미정','시장 밖'];
+export function programCategories(profile={}) {
+  if (Array.isArray(profile.programCategories)) {
+    const out=[],seen=new Set();
+    for (const raw of profile.programCategories) {
+      const val=safeText(raw),key=val.normalize('NFKC').toLocaleLowerCase('ko');
+      if(val&&!seen.has(key)){out.push(val);seen.add(key);}
+    }
+    return out;
+  }
+  const legacy=plain(profile.market2027);
+  return legacy?[legacy]:[];
+}
+export function taskGroups(companyId,tasks=[]) {
+  const rows=tasks.filter(t=>t.companyId===companyId);
+  const active=rows.filter(t=>!['done','cancelled','deleted'].includes(t.status))
+    .sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999')||(a.createdAt||'').localeCompare(b.createdAt||''));
+  const completed=rows.filter(t=>['done','cancelled'].includes(t.status))
+    .sort((a,b)=>(b.completedAt||b.updatedAt||b.createdAt||'').localeCompare(a.completedAt||a.updatedAt||a.createdAt||''));
+  const deleted=rows.filter(t=>t.status==='deleted')
+    .sort((a,b)=>(b.deletedAt||'').localeCompare(a.deletedAt||''));
+  return {active,completed,deleted};
+}
 export const ACTION_GROUPS = [
   '진행 중 — 과제 수행','진행 중 — 과제 신청 중','진행 중 — 실증·R&D 협력',
   '진행 중 — 영업 진행','연락해볼만함','모르겠음 — 담당자 확인',
@@ -90,7 +112,9 @@ export function nextActionFor(company,tasks=[]) {
   const related=tasks.filter(t=> t.companyId===company._id && !['done','cancelled','deleted'].includes(t.status))
     .sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
   if(related.length) return {...related[0],origin:'crm2'};
-  return plain(company.nextAction)?{title:company.nextAction,dueAt:company.nextDate||null,origin:'legacy'}:null;
+  const old=plain(company.nextAction);
+  const duplicated=old&&tasks.some(t=>t.companyId===company._id&&safeText(t.title)===old);
+  return old&&!duplicated?{title:old,dueAt:company.nextDate||null,origin:'legacy'}:null;
 }
 export function activityDate(row){return row.date||row.at||row.createdAt||'';}
 export function latestActivity(companyId,activities=[]){
@@ -112,11 +136,11 @@ export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
   return companies.filter(c=>{
     const p=profiles[c._id]||{};
     if(grade && p.accountGrade!==grade) return false;
-    if(market && p.market2027!==market) return false;
+    if(market && !programCategories(p).includes(market)) return false;
     if(group && p.outreachBucket!==group) return false;
     if(stage && c.stage!==stage) return false;
     if(filters.hasTask && !nextActionFor(c,tasks))return false;
-    if(q && !textSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,p.market2027,p.salesComment,p.contactReason,p.contactName].join(' ')).includes(q))return false;
+    if(q && !textSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,programCategories(p).join(' '),p.salesComment,p.contactReason,p.contactName].join(' ')).includes(q))return false;
     return true;
   }).sort((a,b)=>{
     if(filters.sort==='grade') return (profiles[a._id]?.accountGrade||'Z').localeCompare(profiles[b._id]?.accountGrade||'Z')||a.name.localeCompare(b.name,'ko');

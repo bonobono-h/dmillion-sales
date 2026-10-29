@@ -1,6 +1,6 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
-  latestActivity,relatedProjects,groupStats,filteredAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-category-task';
+  latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-multilist';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -69,19 +69,19 @@ const state={
   loading:false,connected:false
 };
 const navNames={accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'영업 활동',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
-function categoryChoices(selected=''){
-  // Preserve the legacy market2027 data field; only the UI label changes.
-  const candidates=[...MARKETS,...state.categories.map(x=>x.name),...Object.values(state.profiles).map(x=>x.market2027),selected];
+function categoryChoices() {
+  const candidates=[...MARKETS,...state.categories.map(x=>x.name),
+    ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
   const choices=[],seen=new Set();
-  for(const raw of candidates){
-    const value=safeText(raw),key=value.normalize('NFKC').toLocaleLowerCase('ko');
-    if(value&&!seen.has(key)){choices.push(value);seen.add(key);}
+  for (const raw of candidates) {
+    const name=safeText(raw),key=name.normalize('NFKC').toLocaleLowerCase('ko');
+    if(name&&!seen.has(key)){choices.push(name);seen.add(key);}
   }
   return choices;
 }
 
 async function loadDemo(){
-  const {demoData}=await import('./crm2-demo.mjs?v=20261029-category-task');
+  const {demoData}=await import('./crm2-demo.mjs?v=20261029-multilist');
   state.companies=structuredClone(demoData.companies);
   state.profiles=structuredClone(demoData.profiles);
   state.activities=structuredClone(demoData.activities);
@@ -164,35 +164,60 @@ function renderAccounts(){
     </div>
     <div class="table-scroll"><table class="table"><thead><tr><th>업체</th><th>등급·사업분류</th><th>현재 단계</th><th>다음 행동</th></tr></thead><tbody>
       ${list.map(c=>{
-        const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c),contact=contactFor(c);
+        const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c),contact=contactFor(c),activeCount=taskGroups(cid(c),state.tasks).active.length;
         return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0" aria-label="${attr(c.name)} 업체 상세">
           <td><div class="company-name">${esc(c.name||'업체명 없음')}</div><div class="tiny muted truncate">${esc(c.industry||c.bizDetail||c.region||'업종 미입력')}</div>
             ${state.canWrite?`<div class="crm-contact-brief"><span>고객 담당: ${esc(contact.person||'미등록')}</span><span>전화: ${contactDisplay(contact.phone,'phone')}</span><span>메일: ${contactDisplay(contact.email,'email')}</span></div>`:''}</td>
-          <td>${tag(p.accountGrade||'미분류',(p.accountGrade||'').toLowerCase())}<div class="tiny muted" style="margin-top:5px">${esc(p.market2027||'분류 미지정')}</div></td>
+          <td>${tag(p.accountGrade||'미분류',(p.accountGrade||'').toLowerCase())}<div class="tiny muted" style="margin-top:5px">${esc(programCategories(p).slice(0,2).join(' · ')||'분류 미지정')}${programCategories(p).length>2?` 외 ${programCategories(p).length-2}개`:''}</div></td>
           <td>${tag(c.stage||'기록 없음','outline')}</td>
-          <td><div class="tiny truncate">${esc(n?.title||'등록된 액션 없음')}</div><div class="tiny muted">${n?.dueAt?asDate(n.dueAt):''}</div></td></tr>`;
+          <td><div class="tiny truncate">${esc(n?.title||'등록된 액션 없음')}</div><div class="tiny muted">${n?.dueAt?asDate(n.dueAt):''}${activeCount>1?` · 진행 중 ${activeCount}건`:''}</div></td></tr>`;
       }).join('')||`<tr><td colspan="4">${empty('조건에 맞는 업체가 없습니다.','검색 조건을 다시 확인해 주세요.')}</td></tr>`}
     </tbody></table></div><div class="sort-note">업체 상태와 영업 기회 단계는 별도 관리됩니다. · 고객 연락처는 이 화면의 공개 코드에 저장하지 않습니다.</div>
   </section>
   <aside class="panel">${renderCompanyDetail()}</aside>
   </div>`;
 }
+function taskRow(task,kind='active'){
+  const taskId=attr(cid(task));
+  const label=kind==='deleted'?'삭제됨':kind==='completed'?(task.status==='cancelled'?'취소':'완료'):'진행 중';
+  const actionButtons=state.canWrite?(kind==='active'
+    ?btn('complete-task','완료','secondary',`data-id="${taskId}"`)+btn('delete-task','삭제','danger',`data-id="${taskId}"`)
+    :kind==='deleted'?btn('restore-task','복구','secondary',`data-id="${taskId}"`):''):'';
+  return `<div class="crm-task-row">
+      <div class="crm-task-row-main"><strong>${esc(task.title||'내용 없음')}</strong>
+        <span class="crm-task-date">${task.dueAt?'기한 '+asDate(task.dueAt):'기한 미정'}${task.createdAt?' · 등록 '+asDate(task.createdAt):''}</span>
+      </div>
+      <div class="crm-task-row-actions">${tag(label,kind==='active'?'outline':'ok')}${actionButtons}</div>
+    </div>`;
+}
 const detailTabs=[['overview','개요'],['people','담당자'],['opportunities','영업 기회'],['activities','접촉 이력'],['projects','수행 과제'],['documents','문서']];
 function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
   const p=state.profiles[cid(c)]||{},opp=state.opportunities.filter(x=>x.companyId===cid(c)),
     acts=state.activities.filter(x=>x.companyId===cid(c)).sort((a,b)=>activityDate(b).localeCompare(activityDate(a))),
-    t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),next=nextActionFor(c,t),contact=contactFor(c);
+    t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),contact=contactFor(c);
+  const {active:activeTasks,completed:completedTasks,deleted:deletedTasks}=taskGroups(cid(c),t);
+  const oldAction=plain(c.nextAction);
+  const showLegacy=oldAction&&!t.some(x=>safeText(x.title)===oldAction);
   const overview=`<div class="section-label">업체 핵심정보</div>
     <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>고객 담당</dt><dd>${state.canWrite?contactDisplay(contact.person):'<span class="empty-inline">영업 담당자만 열람</span>'}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
     <div class="divider"></div><div class="section-label">고객의 핵심 니즈</div><p class="text-body">${blank(c.needs||p.statusSummary)}</p>
     ${p.contactReason?`<div class="insight"><strong>↗ 연락 명분·시점</strong><p>${esc(p.contactReason)}</p></div>`:''}
     ${p.salesComment?`<div class="insight"><strong>✎ 영업 메모</strong><p>${esc(p.salesComment)}</p></div>`:''}
     ${p.stallReason?`<div class="insight"><strong>⚠ 정체·드랍 사유</strong><p>${esc(p.stallReason)}</p></div>`:''}
-    <div class="divider"></div><div class="section-label">다음 해야 할 일</div><div class="mini-item">
-      <div class="mini-head"><strong class="mini-title">${esc(next?.title||'등록된 후속 업무가 없습니다.')}</strong>${next?.origin==='legacy'?tag('기존 기록','outline'):next?tag('CRM 2.0','ok'):''}</div>
-      <p class="mini-desc">${next?.dueAt?asDate(next.dueAt):'기한 미정'} · ${next?'업무를 완료하면 다음 액션을 확인해 주세요.':'후속 업무를 등록하면 여기에 나타납니다.'}</p>
-    </div><div class="detail-actions">${btn('edit-profile','고객 정보 정리','secondary')}${btn('new-task','＋ 후속 업무','primary')}${state.canWrite&&next?.origin==='crm2'&&next._id?btn('delete-task','삭제','danger',`data-id="${attr(cid(next))}"`):''}</div>`;
+    <div class="divider"></div>
+    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+(showLegacy?1:0)}건</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
+    <div class="crm-task-list">
+      ${activeTasks.map(x=>taskRow(x)).join('')}
+      ${showLegacy?`<div class="crm-task-row legacy">
+        <div class="crm-task-row-main"><strong>${esc(oldAction)}</strong><span class="crm-task-date">${c.nextDate?'기한 '+asDate(c.nextDate):'기한 미정'} · 기존 영업관리 기록</span></div>
+        <div class="crm-task-row-actions">${tag('기존 기록','outline')}<a class="btn secondary" href="index.html#list">기존 화면에서 수정</a></div>
+      </div>`:''}
+      ${!activeTasks.length&&!showLegacy?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 기존 업무 아래에 누적됩니다.'):''}
+    </div>
+    ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map(x=>taskRow(x,'completed')).join('')}</div></details>`:''}
+    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map(x=>taskRow(x,'deleted')).join('')}</div></details>`:''}
+  </div>`;
   const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
@@ -207,7 +232,7 @@ function renderCompanyDetail(){
   const documents=`<div class="section-label">견적·제안서·계약서</div><div class="callout"><h4>기존 문서함 연결</h4><p>파일 권한·원가 자료 보호를 유지하기 위해 문서를 새 화면으로 복사하지 않습니다. 기존 업체 상세의 '문서·구성표'에서 작업하세요.</p></div><div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 업체 문서함 열기 ↗</a></div>`;
   const map={overview,people,opportunities,activities,projects:projectsHtml,documents};
   return `<div class="panel-body"><div class="detail-top"><div>${tag(p.accountGrade?`${p.accountGrade}등급`:'등급 미지정',(p.accountGrade||'').toLowerCase())}<h2 class="detail-name">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'산업 분류 없음')} · ${esc(c.region||p.region||'지역 미입력')}</p></div>${state.canWrite?`<button type="button" class="btn secondary" data-action="edit-profile">편집</button>`:''}</div>
-    <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${tag(p.market2027||'미지정','outline')}${tag(c.stage||'단계 미입력','outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
+    <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${programCategories(p).length?programCategories(p).map(name=>tag(name,'outline')).join(''):tag('미지정','outline')}${tag(c.stage||'단계 미입력','outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
     ${contactPanel(c)}
     <div class="divider"></div><div class="mini-list" style="grid-template-columns:repeat(3,1fr)"><div><strong>${opp.length}</strong><p class="tiny muted">영업 기회</p></div><div><strong>${acts.length}</strong><p class="tiny muted">활동 기록</p></div><div><strong>${projects.length}</strong><p class="tiny muted">연계 과제</p></div></div></div>
     <div class="tabs" role="tablist">${detailTabs.map(([k,v])=>`<button class="tab ${state.companyTab===k?'active':''}" role="tab" aria-selected="${state.companyTab===k}" data-action="company-tab" data-tab="${k}">${v}</button>`).join('')}</div>
@@ -327,14 +352,18 @@ function profileModal(){
   const field=(n,key,v='',opts={})=>`<label>${esc(n)}${opts.select?`<select name="${key}">${options(opts.select,plain(v),'선택 안 함')}</select>`:
     opts.textarea?`<textarea name="${key}" rows="${opts.rows||3}">${esc(v)}</textarea>`:`<input name="${key}" value="${attr(v)}">`}</label>`;
   showModal(`${c.name} · 고객정보 정리`,'기존 업체 레코드를 건드리지 않고 crm2Profiles에 별도로 저장합니다.',
-    `<div class="form-row">${field('고객사 등급','accountGrade',p.accountGrade,{select:['A','B','C']})}<label>지원공고사업분류
-  <select id="crm2-category-select" name="market2027">
-    ${options(categoryChoices(p.market2027),safeText(p.market2027),'선택 안 함')}
-    <option value="__new__">＋ 새 분류 직접 추가…</option>
-  </select></label></div>
-    <label id="crm2-new-category-row" style="display:none">새 지원공고사업분류
-      <input name="newCategory" maxlength="60" placeholder="예: 스마트제조 AX·DX" autocomplete="off">
-      <small>${state.demo?'데모 분류는 새로고침하면 초기화됩니다.':'저장하면 다른 담당자도 공통 분류로 선택할 수 있습니다.'}</small>
+    `<div class="form-row">${field('고객사 등급','accountGrade',p.accountGrade,{select:['A','B','C']})}
+      <div class="crm-category-helper">지원공고사업분류는 복수 선택할 수 있어요. 업체별로 체크된 항목만 저장됩니다.</div></div>
+    <div class="crm-categories-box">
+      <div class="crm-category-title">지원공고사업분류 <span class="muted tiny">현재 ${programCategories(p).length}개 선택</span></div>
+      <div class="crm-category-grid" role="group" aria-label="지원공고사업분류 여러 개 선택">
+        ${categoryChoices().map(value=>`<label class="crm-category-choice"><input type="checkbox" name="programCategory" value="${attr(value)}" ${programCategories(p).includes(value)?'checked':''}><span>${esc(value)}</span></label>`).join('')}
+      </div>
+      <small>선택한 항목은 누적됩니다. 체크 해제하고 저장하면 해당 업체에서만 제거됩니다.</small>
+    </div>
+    <label>새 분류 추가 (선택 사항)
+      <input name="newCategories" maxlength="260" placeholder="예: 제조로봇 지원사업, 스마트제조 AX·DX" autocomplete="off">
+      <small>${state.demo?'데모 데이터는 새로고침하면 초기화됩니다.':'쉼표로 구분해 여러 개 추가 가능 · 새 분류는 다른 담당자에게도 표시됩니다.'}</small>
     </label>
     ${field('영업 분류','outreachBucket',p.outreachBucket,{select:ACTION_GROUPS})}
     ${field('연락 명분 및 시점','contactReason',p.contactReason,{textarea:true})}
@@ -342,8 +371,19 @@ function profileModal(){
     ${field('정체·드랍 사유','stallReason',p.stallReason,{textarea:true})}
     ${field('영업 메모','salesComment',p.salesComment,{textarea:true})}`,
     async fd=>{
-      const patch=Object.fromEntries(['accountGrade','market2027','outreachBucket','contactReason','statusSummary','stallReason','salesComment'].map(k=>[k,safeText(fd.get(k))]));
-      if(patch.market2027==='__new__')patch.market2027=await ensureCategory(fd.get('newCategory'));
+      const patch=Object.fromEntries(['accountGrade','outreachBucket','contactReason','statusSummary','stallReason','salesComment'].map(k=>[k,safeText(fd.get(k))]));
+      const names=fd.getAll('programCategory').map(safeText).filter(Boolean);
+      const extras=safeText(fd.get('newCategories')).split(/[,，;\n]/).map(safeText).filter(Boolean);
+      if([...names,...extras].some(n=>n.length>60))throw new Error('분류 이름은 각각 60자 이하로 입력해 주세요.');
+      if(names.length+extras.length>60)throw new Error('선택할 수 있는 분류는 최대 60개입니다.');
+      for(const raw of extras)names.push(await ensureCategory(raw));
+      const seen=new Set();
+      patch.programCategories=names.filter(value=>{
+        const key=value.normalize('NFKC').toLocaleLowerCase('ko');
+        if(seen.has(key))return false;
+        seen.add(key);return true;
+      });
+      patch.market2027=patch.programCategories[0]||''; // Legacy compatibility only.
       patch.updatedAt=new Date().toISOString();
       const exists=!!state.profiles[cid(c)]?._id;
       await saveDoc('crm2Profiles',cid(c),patch,exists);
@@ -396,14 +436,14 @@ function taskModal(){
     });
 }
 async function completeTask(id){
-  const t=state.tasks.find(x=>cid(x)===id);if(!t||!state.canWrite)return;
+  const t=state.tasks.find(x=>cid(x)===id);if(!t||!state.canWrite||['done','cancelled','deleted'].includes(t.status))return;
   if(!confirm(`${t.title}\n완료 처리할까요?`))return;
   const patch={status:'done',completedAt:new Date().toISOString()};
   try{await saveDoc('tasks',id,patch,true);Object.assign(t,patch);render();toast('업무를 완료 처리했습니다.');}catch(e){toast('저장 실패: '+e.message,true);}
 }
 async function deleteTask(id){
   const task=state.tasks.find(x=>cid(x)===id);
-  if(!task||!state.canWrite)return;
+  if(!task||!state.canWrite||['done','cancelled','deleted'].includes(task.status))return;
   if(!confirm(`후속 업무 "${task.title}"을(를) 삭제할까요?\n삭제된 업무는 화면에서 숨겨지며 복구를 위한 기록은 남습니다.`))return;
   const patch={status:'deleted',deletedAt:new Date().toISOString(),deletedBy:state.userId||null};
   try{
@@ -411,6 +451,16 @@ async function deleteTask(id){
     Object.assign(task,patch);
     render();toast('후속 업무를 삭제했습니다.');
   }catch(error){console.error(error);toast('삭제 실패: '+error.message,true);}
+}
+async function restoreTask(id){
+  const task=state.tasks.find(x=>cid(x)===id);
+  if(!task||!state.canWrite||task.status!=='deleted')return;
+  const patch={status:'todo',deletedAt:null,deletedBy:null,updatedAt:new Date().toISOString()};
+  try{
+    await saveDoc('tasks',id,patch,true);
+    Object.assign(task,patch);
+    render();toast('삭제한 업무를 복구했습니다.');
+  }catch(error){console.error(error);toast('복구 실패: '+error.message,true);}
 }
 function csvParse(text){
   const rows=[];let cur=[],field='',quote=false;
@@ -500,6 +550,7 @@ document.addEventListener('click',async e=>{
     else if(action==='new-task')taskModal();
     else if(action==='complete-task')await completeTask(id);
     else if(action==='delete-task')await deleteTask(id);
+    else if(action==='restore-task')await restoreTask(id);
     else if(action==='pick-file')$('import-file')?.click();
     else if(action==='export-diff')exportDiff();
     else if(action==='apply-session')applyImportSession();
@@ -507,12 +558,6 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('change',async e=>{
   const id=e.target.id;
-  if(id==='crm2-category-select'){
-    const row=$('crm2-new-category-row'),input=row?.querySelector('input');
-    if(row)row.style.display=e.target.value==='__new__'?'grid':'none';
-    if(input){input.required=e.target.value==='__new__';if(input.required)input.focus();}
-    return;
-  }
   const filters={'f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
   if(filters[id]){state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;render();return;}
   if(id==='opp-filter'){state.oppFilter=e.target.value;render();}
