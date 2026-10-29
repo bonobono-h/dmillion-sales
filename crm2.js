@@ -29,7 +29,7 @@ function contactFor(company){
   const pick=(...values)=>values.map(contactText).find(Boolean)||'';
   return {
     // An uploaded spreadsheet is session-only and may be newer than the existing site values.
-    person:pick(latest?.contactName,company.contactPerson,stored.contactPerson,stored.person,stored.name,p.contactName,company.contactName),
+    person:pick(latest?.contactName,stored.contactPerson,stored.person,stored.name,company.contactPerson,p.contactName,company.contactName),
     phone:pick(latest?.phone,stored.phone,stored.phones,company.phone),
     email:pick(latest?.email,stored.email,stored.emails,company.email)
   };
@@ -62,7 +62,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:'accounts',companyTab:'overview',selectedId:null,
+  screen:new URLSearchParams(location.search).get('view')==='import'?'import':'accounts',companyTab:'overview',selectedId:null,
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
   filters:{q:'',grade:'',market:'',group:'',stage:'',sort:'name',hasTask:false},
   oppFilter:'all',activityFilter:'all',importFilter:'all',
@@ -285,7 +285,7 @@ function renderManager(){
   const stageData=STAGES.map(([k,label])=>({key:k,label,n:items.filter(o=>o.stage===k).length}));
   const max=Math.max(1,...stageData.map(s=>s.n));
   const grades=['A','B','C','미분류'].map(g=>({name:g,n:state.companies.filter(c=>(state.profiles[cid(c)]?.accountGrade||'미분류')===g).length}));
-  const due=state.tasks.filter(t=>t.status!=='done'&&t.status!=='cancelled'&&t.dueAt&&new Date(t.dueAt)<new Date()).length;
+  const due=state.tasks.filter(t=>!['done','cancelled','deleted'].includes(t.status)&&t.dueAt&&new Date(t.dueAt)<new Date()).length;
   return `${heading('영업 현황 · 관리자','기존 업체 현황과 별도 영업 기회를 합쳐 봅니다. 현재 버전의 매출은 영업 기회 금액 기준입니다.')}
   ${state.isAdmin?'':`<div class="notice warning" style="margin-bottom:15px">이 화면은 예비 분석 화면입니다. 관리자 전용 금액·원가 자료는 불러오지 않으며, 권한 확대 없이 기존 정책을 따릅니다.</div>`}
   <div class="stats">${stat('관리 업체',state.companies.length+'곳','협력사 포함 전체','▦')}${stat('진행 중 기회',open.length+'건','수주·실패 제외','◇')}${stat('확정 수주 금액',moneyKRW(total),'영업기회에 기록된 금액 합계','₩')}${stat('기한 경과 후속 업무',due+'건','CRM 2.0 미완료 업무 기준','!')}</div>
