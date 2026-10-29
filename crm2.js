@@ -1,7 +1,7 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-needs-tone-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-action-cards-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -70,7 +70,7 @@ const state={
   importSelected:new Set(),importNewIds:{},importTaskIds:{},
   importOptions:{replaceContacts:false,includeTasks:false},importBackup:null,
   importBackupSaved:false,importApplying:false,importResult:'',
-  loading:false,connected:false
+  loading:false,connected:false,legacyImporting:false
 };
 const navNames={accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'영업 활동',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
@@ -181,18 +181,42 @@ function renderAccounts(){
   <aside class="panel">${renderCompanyDetail()}</aside>
   </div>`;
 }
-function taskRow(task,kind='active'){
+function taskRow(task,kind='active',index=0){
   const taskId=attr(cid(task));
   const label=kind==='deleted'?'삭제됨':kind==='completed'?(task.status==='cancelled'?'취소':'완료'):'진행 중';
-  const actionButtons=state.canWrite?(kind==='active'
+  const actions=state.canWrite?(kind==='active'
     ?btn('complete-task','완료','secondary',`data-id="${taskId}"`)+btn('delete-task','삭제','danger',`data-id="${taskId}"`)
     :kind==='deleted'?btn('restore-task','복구','secondary',`data-id="${taskId}"`):''):'';
-  return `<div class="crm-task-row">
-      <div class="crm-task-row-main"><strong>${esc(task.title||'내용 없음')}</strong>
-        <span class="crm-task-date">${task.dueAt?'기한 '+asDate(task.dueAt):'기한 미정'}${task.createdAt?' · 등록 '+asDate(task.createdAt):''}</span>
+  const parts=splitActionItems(task.title);
+  const content=parts.length>1
+    ?`<div class="crm-task-sublist">${parts.map((p,i)=>`<div><span class="crm-task-subnum">${String(i+1).padStart(2,'0')}</span><span>${esc(p.text)}</span></div>`).join('')}</div>`
+    :`<strong class="crm-task-title">${esc(parts[0]?.text||task.title||'내용 없음')}</strong>`;
+  return `<article class="crm-task-row ${kind}" aria-label="후속 업무 ${index+1}">
+    <div class="crm-task-row-main">
+      <span class="crm-task-number" aria-hidden="true">${String(index+1).padStart(2,'0')}</span>
+      <div class="crm-task-content">${content}
+        <div class="crm-task-date">${task.dueAt?'기한 '+asDate(task.dueAt):'기한 미정'}${task.createdAt?' · 등록 '+asDate(task.createdAt):''}</div>
       </div>
-      <div class="crm-task-row-actions">${tag(label,kind==='active'?'outline':'ok')}${actionButtons}</div>
-    </div>`;
+    </div>
+    <div class="crm-task-row-actions">${tag(label,kind==='active'?'outline':'ok')}${actions}</div>
+  </article>`;
+}
+function renderLegacyActions(items){
+  if(!items.length)return '';
+  return `<section class="crm-legacy-block" aria-label="기존 영업관리 후속 업무">
+    <div class="crm-legacy-heading">
+      <div><strong>기존 영업관리 기록 · ${items.length}항목</strong><p>번호별로 구분해 표시했습니다. 원문은 변경하지 않습니다.</p></div>
+      <div class="crm-legacy-actions">
+        ${state.canWrite?btn('convert-legacy-actions',state.legacyImporting?'등록 중…':'항목별 업무로 등록','secondary',state.legacyImporting?'disabled':''):''}
+        <a class="btn secondary" href="index.html#list">기존 화면에서 수정</a>
+      </div>
+    </div>
+    <div class="crm-legacy-list">${items.map(part=>`<div class="crm-legacy-item">
+      <span class="crm-task-number" aria-hidden="true">${String(part.index+1).padStart(2,'0')}</span>
+      <div class="crm-legacy-text">${esc(part.text)}</div>
+    </div>`).join('')}</div>
+    ${state.canWrite?'<p class="crm-legacy-help">개별 완료·삭제는 ‘항목별 업무로 등록’한 뒤 가능합니다. 기존 원문은 그대로 유지됩니다.</p>':''}
+  </section>`;
 }
 function renderNeedsList(items) {
   return `<ul class="crm-needs-list">${items.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`;
@@ -214,8 +238,7 @@ function renderCompanyDetail(){
     acts=state.activities.filter(x=>x.companyId===cid(c)).sort((a,b)=>activityDate(b).localeCompare(activityDate(a))),
     t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),contact=contactFor(c);
   const {active:activeTasks,completed:completedTasks,deleted:deletedTasks}=taskGroups(cid(c),t);
-  const oldAction=plain(c.nextAction);
-  const showLegacy=oldAction&&!t.some(x=>safeText(x.title)===oldAction);
+  const legacyItems=remainingLegacyActions(c,t);
   const overview=`<div class="section-label">업체 핵심정보</div>
     <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>고객 담당</dt><dd>${state.canWrite?contactDisplay(contact.person):'<span class="empty-inline">영업 담당자만 열람</span>'}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
     <div class="divider"></div><div class="crm-needs-heading"><div class="section-label">고객의 핵심 니즈</div>
@@ -225,17 +248,12 @@ function renderCompanyDetail(){
     ${p.salesComment?`<div class="insight"><strong>✎ 영업 메모</strong><p>${esc(p.salesComment)}</p></div>`:''}
     ${p.stallReason?`<div class="insight"><strong>⚠ 정체·드랍 사유</strong><p>${esc(p.stallReason)}</p></div>`:''}
     <div class="divider"></div>
-    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+(showLegacy?1:0)}건</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
-    <div class="crm-task-list">
-      ${activeTasks.map(x=>taskRow(x)).join('')}
-      ${showLegacy?`<div class="crm-task-row legacy">
-        <div class="crm-task-row-main"><strong>${esc(oldAction)}</strong><span class="crm-task-date">${c.nextDate?'기한 '+asDate(c.nextDate):'기한 미정'} · 기존 영업관리 기록</span></div>
-        <div class="crm-task-row-actions">${tag('기존 기록','outline')}<a class="btn secondary" href="index.html#list">기존 화면에서 수정</a></div>
-      </div>`:''}
-      ${!activeTasks.length&&!showLegacy?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 기존 업무 아래에 누적됩니다.'):''}
-    </div>
-    ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map(x=>taskRow(x,'completed')).join('')}</div></details>`:''}
-    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map(x=>taskRow(x,'deleted')).join('')}</div></details>`:''}`;
+    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+legacyItems.length}항목</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
+    <div class="crm-task-list">${activeTasks.map((x,i)=>taskRow(x,'active',i)).join('')}</div>
+    ${renderLegacyActions(legacyItems)}
+    ${!activeTasks.length&&!legacyItems.length?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 업체별로 누적됩니다.'):''}
+    ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
+    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
   const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
@@ -258,7 +276,7 @@ function renderCompanyDetail(){
 }
 function renderHome(){
   const todo=state.tasks.filter(t=>!['done','cancelled','deleted'].includes(t.status)).sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
-  const nextLegacy=state.companies.filter(c=> !todo.some(t=>t.companyId===cid(c)) && c.nextAction).map(c=>({companyId:cid(c),title:c.nextAction,dueAt:c.nextDate,origin:'legacy'}));
+  const nextLegacy=state.companies.flatMap(c=>remainingLegacyActions(c,state.tasks).map(part=>({companyId:cid(c),title:part.text,dueAt:c.nextDate||null,origin:'legacy'})));
   const all=[...todo,...nextLegacy].sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
   const now=new Date(),today=now.toISOString().slice(0,10),overdue=all.filter(t=>t.dueAt && t.dueAt.slice(0,10)<today),undated=all.filter(t=>!t.dueAt);
   const priorities=state.companies.filter(c=>['모르겠음 — 담당자 확인','기록 없음 — 메일 확보 후 일괄'].includes(state.profiles[cid(c)]?.outreachBucket));
@@ -268,7 +286,7 @@ function renderHome(){
     <section class="panel"><div class="panel-head"><div><h2 class="panel-title">다음 영업 행동</h2><p class="panel-subtitle">마감일 빠른 순서 · ${all.length}건</p></div></div>
       <div class="panel-body flow-list">${all.slice(0,30).map(t=>{
       const expired=t.dueAt&&t.dueAt<today;
-      return `<div class="flow-card"><div><h3>${esc(cname(t.companyId))}</h3><p>${esc(t.title)} · ${t.dueAt?asDate(t.dueAt):'일정 미정'}</p></div><div class="flow-detail">${tag(t.origin==='legacy'?'기존 액션':expired?'기한 지남':'진행 중',expired?'bad':'outline')}${state.canWrite&&t._id?btn('complete-task','완료 처리','secondary',`data-id="${attr(cid(t))}"`):''}${state.canWrite&&t._id?btn('delete-task','삭제','danger',`data-id="${attr(cid(t))}"`):''}<button class="btn secondary" type="button" data-action="go-company" data-id="${attr(t.companyId)}">업체 보기</button></div></div>`;
+      return `<div class="flow-card"><div><h3>${esc(cname(t.companyId))}</h3><p class="crm-home-action-text">${esc(splitActionItems(t.title)[0]?.text||t.title)} · ${t.dueAt?asDate(t.dueAt):'일정 미정'}</p></div><div class="flow-detail">${tag(t.origin==='legacy'?'기존 액션':expired?'기한 지남':'진행 중',expired?'bad':'outline')}${state.canWrite&&t._id?btn('complete-task','완료 처리','secondary',`data-id="${attr(cid(t))}"`):''}${state.canWrite&&t._id?btn('delete-task','삭제','danger',`data-id="${attr(cid(t))}"`):''}<button class="btn secondary" type="button" data-action="go-company" data-id="${attr(t.companyId)}">업체 보기</button></div></div>`;
     }).join('')||empty('등록된 후속 업무가 없습니다.','업체에서 후속 업무를 만들어 보세요.')}</div></section>
     <div style="display:grid;gap:17px;align-content:start"><section class="panel"><div class="panel-head"><h2 class="panel-title">확인이 필요한 고객사</h2></div><div class="panel-body mini-list">${priorities.slice(0,10).map(c=>`<div class="mini-item"><div class="mini-head"><strong class="mini-title">${esc(c.name)}</strong>${tag(state.profiles[cid(c)]?.accountGrade||'미분류')}</div><p class="mini-desc">${esc(state.profiles[cid(c)]?.outreachBucket||'')}</p><div class="detail-actions"><button class="btn secondary" data-action="go-company" data-id="${attr(cid(c))}">업체 상세</button></div></div>`).join('')||empty('확인 대상이 없습니다.')}</div></section>
     <section class="callout"><h4>영업 업무 운영 원칙</h4><p>새로운 CRM 후속 업무가 있으면 기존 업체의 nextAction과 중복해서 표시하지 않습니다. 완료되지 않은 업무는 숨기지 않으며, 기한이 정해지지 않은 업무에 임의 날짜를 넣지 않습니다.</p></section></div>
@@ -581,6 +599,35 @@ async function restoreTask(id){
     render();toast('삭제한 업무를 복구했습니다.');
   }catch(error){console.error(error);toast('복구 실패: '+error.message,true);}
 }
+async function convertLegacyActions(){
+  const company=cc(state.selectedId);
+  if(!company||!state.canWrite||state.legacyImporting)return;
+  const pieces=remainingLegacyActions(company,state.tasks);
+  if(!pieces.length)return toast('등록할 기존 항목이 없습니다.');
+  if(!confirm(`기존 영업관리 기록의 ${pieces.length}개 항목을 개별 후속 업무로 등록할까요?\n기존 원문을 변경하지 않으며, 등록 후 각 항목을 완료·삭제할 수 있습니다.\n여러 항목에 임의 기한은 지정하지 않습니다.`))return;
+  state.legacyImporting=true;
+  let added=0;
+  try{
+    for(const piece of pieces){
+      if(!remainingLegacyActions(company,state.tasks).some(x=>x.key===piece.key))continue;
+      const id=uid();
+      const data={companyId:cid(company),title:piece.text,
+        source:'legacy-nextAction',sourceActionKey:piece.key,
+        status:'todo',priority:'normal',dueAt:null,
+        createdAt:new Date().toISOString(),assigneeId:state.userId||null};
+      await saveDoc('tasks',id,data);
+      state.tasks.push({_id:id,...data});
+      added++;
+    }
+    toast(`${added}개 항목을 개별 업무로 등록했습니다.`);
+  }catch(error){
+    console.error(error);
+    toast(`일부만 등록됐습니다 (${added}/${pieces.length}). 다시 누르면 남은 항목만 등록합니다. ${error.message}`,true);
+  }finally{
+    state.legacyImporting=false;
+    render();
+  }
+}
 function csvParse(text){
   const rows=[];let cur=[],field='',quote=false;
   for(let i=0;i<text.length;i++){
@@ -745,6 +792,7 @@ document.addEventListener('click',async e=>{
     else if(action==='new-opportunity')opportunityModal();
     else if(action==='edit-opportunity')opportunityModal(id);
     else if(action==='new-task')taskModal();
+    else if(action==='convert-legacy-actions')await convertLegacyActions();
     else if(action==='complete-task')await completeTask(id);
     else if(action==='delete-task')await deleteTask(id);
     else if(action==='restore-task')await restoreTask(id);
