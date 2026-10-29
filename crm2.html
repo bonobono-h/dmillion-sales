@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1730">
+  <title>DMILLION CRM 2.0 · 업체 중심 영업관리</title>
+  <link rel="stylesheet" href="crm2.css">
+  <script type="module">
+    const demo = new URLSearchParams(location.search).get('demo') === '1';
+    window.CRM2_DEMO = demo;
+    if (!demo) {
+      for (const name of ['config.js', 'supabase.js', 'bridge.js']) {
+        await new Promise((resolve,reject)=> {
+          const s=document.createElement('script');s.src=name;s.async=false;
+          s.onload=resolve;s.onerror=()=>reject(new Error(name+' 파일을 불러오지 못했습니다.'));
+          document.head.appendChild(s);
+        }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
+      }
+    }
+    await import('./crm2.js');
+  </script>
+</head>
+<body>
+<div id="appShell" class="shell">
+  <aside class="sidebar" aria-label="주요 메뉴">
+    <div class="brand"><span class="brand-mark">D</span><div><strong>DMILLION</strong><small>SALES INTELLIGENCE</small></div></div>
+    <div class="side-section">CRM WORKSPACE</div>
+    <nav id="sideNav" class="side-nav">
+      <button data-nav="accounts" class="nav-link active"><span class="nav-glyph">▦</span> 업체 관리 <span class="nav-chevron">›</span></button>
+      <button data-nav="home" class="nav-link"><span class="nav-glyph">◷</span> 오늘의 영업 <span class="nav-chevron">›</span></button>
+      <button data-nav="opportunities" class="nav-link"><span class="nav-glyph">◇</span> 영업 기회 <span class="nav-chevron">›</span></button>
+      <button data-nav="activities" class="nav-link"><span class="nav-glyph">☷</span> 영업 활동 <span class="nav-chevron">›</span></button>
+      <button data-nav="manager" class="nav-link"><span class="nav-glyph">◫</span> 관리자 분석 <span class="nav-chevron">›</span></button>
+    </nav>
+    <div class="side-section side-secondary">MANAGEMENT</div>
+    <nav class="side-nav">
+      <button data-nav="import" class="nav-link"><span class="nav-glyph">⇩</span> 엑셀 비교·가져오기</button>
+      <a class="nav-link" href="index.html"><span class="nav-glyph">↗</span> 기존 영업관리 열기</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="side-help">기존 시스템과 데이터를 공유하는 새로운 CRM 화면입니다. 운영 데이터를 자동으로 덮어쓰지 않습니다.</div>
+      <div class="version">CRM 2.0 · 시범 버전 0.1</div>
+    </div>
+  </aside>
+  <section class="workspace">
+    <header class="top">
+      <div class="top-left"><button class="mobile-menu" id="mobileMenu" aria-label="메뉴 열기">☰</button><span class="breadcrumb">영업관리 <span>／</span> <b id="crumb">업체 관리</b></span></div>
+      <div class="top-right hright"><span id="modePill" class="mode-pill">연결 확인 중</span><button id="refreshBtn" class="icon-btn" title="데이터 새로고침" aria-label="새로고침">↻</button></div>
+    </header>
+    <main id="main" class="main" aria-live="polite"></main>
+    <footer class="footer-note">© DMILLION · CRM 2.0 · 연락처와 회사 정보는 승인된 업무 목적으로만 사용하세요.</footer>
+  </section>
+</div>
+<div id="loadingScreen" class="loading-screen"><div class="loading-card"><div class="loading-mark">D</div><strong>DMILLION CRM 2.0</strong><p id="loadingText">고객사 정보를 안전하게 연결하고 있습니다…</p><button type="button" id="loadingDemo" class="btn secondary hidden">데모로 보기</button></div></div>
+<div id="modalLayer" class="modal-layer hidden" aria-hidden="true"><div class="modal-backdrop" data-close="1"></div><div id="modal" class="modal" role="dialog" aria-modal="true" aria-label="상세 편집"></div></div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
