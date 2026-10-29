@@ -5,3 +5,17 @@
 @media(max-width:1080px){.account-layout{grid-template-columns:1fr}.detail-scroll{max-height:none}.two-cols{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:780px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;left:-250px;width:242px;height:100vh;transition:left .2s;box-shadow:20px 0 50px rgba(0,0,0,.13)}.sidebar.open{left:0}.top{padding:0 16px;height:60px}.main{padding:22px 15px 60px}.mobile-menu{display:inline-block}.top .dm-me{font-size:10px}.page-title{font-size:23px}.page-heading{align-items:flex-start;flex-direction:column}.stats{gap:8px}.stat{padding:14px}.stat .number{font-size:25px}.toolbar{padding:11px}.import-row{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.panel-head{padding:15px}.table-scroll{max-height:410px}}
 @media(max-width:450px){.stat{padding:12px}.heading-actions{width:100%;flex-wrap:wrap}.heading-actions .btn{flex:1}.top-right .mode-pill{display:none}.simple-grid{grid-template-columns:repeat(2,1fr)}.import-row{gap:7px}.detail-name{font-size:19px}}
+
+/* CRM 2.0: customer contact details are rendered only after the existing role check. */
+.crm-contact-card{margin-top:15px;padding:14px;background:#f7f9ff;border:1px solid #e0e6fa;border-radius:11px}
+.crm-contact-title{display:flex;gap:8px;align-items:center;justify-content:space-between;margin-bottom:12px;font-size:13px;color:#28385b}
+.crm-contact-title span{color:#8190a4;font-weight:600;font-size:10px}
+.crm-contact-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.crm-contact-item{background:white;border:1px solid #e7ebf5;border-radius:8px;padding:10px;min-width:0;font-size:12px;overflow-wrap:anywhere}
+.crm-contact-label{color:#78869e;font-size:11px;margin-bottom:5px}
+.crm-contact-data{color:#2b3a55;overflow-wrap:anywhere}
+.crm-contact-link{color:#3455be;text-decoration:underline;text-decoration-color:#bac8ed;text-underline-offset:3px;font-weight:700;overflow-wrap:anywhere}
+.crm-contact-link:hover{color:#182e85;text-decoration-color:currentColor}
+.crm-contact-brief{display:flex;flex-wrap:wrap;gap:2px 8px;max-width:300px;margin-top:5px;color:#6b7c97;font-size:10.5px;line-height:1.45;overflow-wrap:anywhere}
+.crm-contact-brief .empty-inline{font-size:10.5px}
+@media(max-width:560px){.crm-contact-grid{grid-template-columns:1fr}.crm-contact-card{padding:12px}.crm-contact-title{align-items:flex-start}}
