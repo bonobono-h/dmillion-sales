@@ -216,8 +216,7 @@ function renderCompanyDetail(){
       ${!activeTasks.length&&!showLegacy?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 기존 업무 아래에 누적됩니다.'):''}
     </div>
     ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map(x=>taskRow(x,'completed')).join('')}</div></details>`:''}
-    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map(x=>taskRow(x,'deleted')).join('')}</div></details>`:''}
-  </div>`;
+    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map(x=>taskRow(x,'deleted')).join('')}</div></details>`:''}`;
   const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
