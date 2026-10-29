@@ -1,7 +1,7 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-real-import';
+  buildImportPlan,formatNeedsForCRM,needsItems,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-needs-tone-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -194,6 +194,19 @@ function taskRow(task,kind='active'){
       <div class="crm-task-row-actions">${tag(label,kind==='active'?'outline':'ok')}${actionButtons}</div>
     </div>`;
 }
+function renderNeedsList(items) {
+  return `<ul class="crm-needs-list">${items.map(item=>`<li>${esc(item)}</li>`).join('')}</ul>`;
+}
+function renderNeedsView(company,profile) {
+  const raw=typeof profile.needsSource==='string'?profile.needsSource:(company.needs||profile.statusSummary||'');
+  const summary=safeText(profile.needsSummary),items=needsItems(summary||raw);
+  if(!items.length)return '<span class="empty-inline">등록된 고객 요구사항이 없습니다.</span>';
+  const main=items.slice(0,4),extra=items.slice(4);
+  return `<div class="crm-needs-view">${renderNeedsList(main)}
+    ${extra.length?`<details class="crm-needs-more"><summary>추가 요구사항 ${extra.length}건 보기</summary>${renderNeedsList(extra)}</details>`:''}
+    <div class="crm-needs-origin">${summary?'담당자 검토 정리본':'기존 원문 기반 항목 정돈 · 사실관계 검토 후 저장 가능'}</div>
+  </div>`;
+}
 const detailTabs=[['overview','개요'],['people','담당자'],['opportunities','영업 기회'],['activities','접촉 이력'],['projects','수행 과제'],['documents','문서']];
 function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
@@ -205,7 +218,9 @@ function renderCompanyDetail(){
   const showLegacy=oldAction&&!t.some(x=>safeText(x.title)===oldAction);
   const overview=`<div class="section-label">업체 핵심정보</div>
     <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>고객 담당</dt><dd>${state.canWrite?contactDisplay(contact.person):'<span class="empty-inline">영업 담당자만 열람</span>'}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
-    <div class="divider"></div><div class="section-label">고객의 핵심 니즈</div><p class="text-body">${blank(c.needs||p.statusSummary)}</p>
+    <div class="divider"></div><div class="crm-needs-heading"><div class="section-label">고객의 핵심 니즈</div>
+      ${state.canWrite?btn('edit-needs','니즈 정리·편집','secondary'):''}</div>
+    ${renderNeedsView(c,p)}
     ${p.contactReason?`<div class="insight"><strong>↗ 연락 명분·시점</strong><p>${esc(p.contactReason)}</p></div>`:''}
     ${p.salesComment?`<div class="insight"><strong>✎ 영업 메모</strong><p>${esc(p.salesComment)}</p></div>`:''}
     ${p.stallReason?`<div class="insight"><strong>⚠ 정체·드랍 사유</strong><p>${esc(p.stallReason)}</p></div>`:''}
@@ -448,6 +463,52 @@ function profileModal(){
       state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
     });
 }
+function updateNeedsPreview(){
+  const target=$('crm2NeedsPreview'),raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
+  if(!target||!raw||!summary)return;
+  const value=safeText(summary.value)||formatNeedsForCRM(raw.value);
+  const items=needsItems(value);
+  target.innerHTML=items.length?renderNeedsList(items):'<span class="empty-inline">원문을 입력하거나 정리본을 작성하면 미리보기가 표시됩니다.</span>';
+}
+function needsModal(){
+  const c=cc(state.selectedId);
+  if(!c)return toast('업체를 먼저 선택해 주세요.',true);
+  if(!state.canWrite)return toast('고객 정보 수정 권한이 없습니다.',true);
+  const p=state.profiles[cid(c)]||{};
+  const source=typeof p.needsSource==='string'?p.needsSource:(c.needs||p.statusSummary||'');
+  const summary=safeText(p.needsSummary);
+  showModal(c.name+' · 핵심 니즈 정리',
+    '원문을 보존하고, CRM 표시용 정리본만 별도 저장합니다. 작성 후 미리보기를 확인하세요.',
+    `<div class="crm-needs-guide"><strong>영업관리 작성 기준</strong>
+      <span>확인된 현장 이슈와 고객 요청을 중심으로 기재 · 사양·수치 유지 · 추정·성과 과장 금지 · 미확정 사항은 [확인 필요]로 구분</span>
+    </div>
+    <label>고객사 요구사항 원문
+      <textarea name="needsSource" id="crm2NeedsSource" rows="7" placeholder="현장 미팅 내용, 고객의 실제 요구사항을 원문 그대로 입력하세요.">${esc(source)}</textarea>
+      <small>기존 업체의 원본 메모는 변경하지 않습니다.</small>
+    </label>
+    <div class="crm-needs-toolbar">${btn('format-needs','번호·줄바꿈 정돈하기','secondary')}
+      <span class="small muted">사실관계를 바꾸지 않는 규칙 기반 정돈입니다.</span></div>
+    <label>고객에게 확인된 핵심 니즈 · 정리본
+      <textarea name="needsSummary" id="crm2NeedsSummary" rows="6"
+       placeholder="정돈하기 버튼을 누른 뒤 문장을 수정하세요. 빈칸이면 원문을 항목화해 표시합니다.">${esc(summary)}</textarea>
+      <small>업체 상세화면에는 이 정리본이 우선 표시됩니다. 원문은 보존됩니다.</small>
+    </label>
+    <div class="crm-needs-preview-title">업체 상세화면 미리보기</div>
+    <div id="crm2NeedsPreview" class="crm-needs-preview"></div>`,
+    async fd=>{
+      const sourceValue=safeText(fd.get('needsSource')),summaryValue=safeText(fd.get('needsSummary'));
+      if(sourceValue.length>40000||summaryValue.length>20000)throw new Error('원문은 4만 자, 정리본은 2만 자 이내로 입력해 주세요.');
+      const patch={};
+      if(sourceValue!==safeText(source))patch.needsSource=sourceValue;
+      if(summaryValue!==summary)patch.needsSummary=summaryValue;
+      if(!Object.keys(patch).length)return;
+      patch.needsEditedAt=new Date().toISOString();
+      patch.needsEditedBy=state.userId||null;
+      await saveDoc('crm2Profiles',cid(c),patch,!!p._id);
+      state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
+    });
+  updateNeedsPreview();
+}
 function opportunityModal(id=null){
   if(!state.canWrite)return toast('수정 권한이 없습니다.',true);
   const current=state.opportunities.find(o=>cid(o)===id),c=cc(state.selectedId);
@@ -676,6 +737,11 @@ document.addEventListener('click',async e=>{
     else if(action==='company-tab'){state.companyTab=a.dataset.tab;render();}
     else if(action==='open-import'){state.screen='import';render();}
     else if(action==='edit-profile')profileModal();
+    else if(action==='edit-needs')needsModal();
+    else if(action==='format-needs'){
+      const raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
+      if(raw&&summary){summary.value=formatNeedsForCRM(raw.value);updateNeedsPreview();summary.focus();}
+    }
     else if(action==='new-opportunity')opportunityModal();
     else if(action==='edit-opportunity')opportunityModal(id);
     else if(action==='new-task')taskModal();
@@ -723,6 +789,9 @@ document.addEventListener('change',async e=>{
   }
 });
 document.addEventListener('input',e=>{
+  if(e.target.id==='crm2NeedsSource'||e.target.id==='crm2NeedsSummary'){
+    updateNeedsPreview();return;
+  }
   if(e.target.id!=='f-q')return;
   const input=e.target,pos=input.selectionStart;state.filters.q=input.value;
   render();const next=$('f-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);

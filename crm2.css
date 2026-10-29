@@ -53,3 +53,23 @@
 .import-table input[type=checkbox]{accent-color:#4955ca;width:16px;height:16px;cursor:pointer}
 #import-status{min-height:22px;font-weight:700;margin:10px 0}
 @media(max-width:680px){.import-actionbar{align-items:stretch}.import-safety-buttons .btn{width:100%}.import-options{display:grid}}
+
+/* B2B customer needs: editable source + reviewed summary */
+.crm-needs-heading{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:9px}
+.crm-needs-heading .section-label{margin:0}
+.crm-needs-heading .btn{padding:7px 10px;font-size:11px}
+.crm-needs-view{background:#fafbfe;border:1px solid #e5eaf4;padding:12px 14px;border-radius:10px;color:#3d506e}
+.crm-needs-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.crm-needs-list li{font-size:12px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;position:relative;padding-left:13px}
+.crm-needs-list li:before{content:'•';position:absolute;left:0;color:#6376c3;font-weight:800}
+.crm-needs-origin{font-size:10px;color:#8a97ab;margin-top:10px}
+.crm-needs-more{margin-top:10px;border-top:1px solid #e5eaf4;padding-top:9px}
+.crm-needs-more summary{font-size:11px;font-weight:700;color:#4656b4;cursor:pointer}
+.crm-needs-more .crm-needs-list{padding-top:10px}
+.crm-needs-guide{display:grid;gap:6px;padding:12px;background:#f6f8ff;border:1px solid #e3e8fc;border-radius:9px;font-size:12px;color:#4d5f80;line-height:1.6}
+.crm-needs-guide strong{font-size:12px;color:#344e98}
+.crm-needs-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.crm-needs-preview-title{font-size:12px;font-weight:800;color:#435472;margin-top:4px}
+.crm-needs-preview{padding:12px;border:1px dashed #ced8ec;background:#fafbff;border-radius:9px;max-height:220px;overflow:auto}
+.form textarea#crm2NeedsSource,.form textarea#crm2NeedsSummary{font-size:12px;line-height:1.65;min-height:145px}
+@media(max-width:640px){.crm-needs-heading{align-items:flex-start}.crm-needs-toolbar{align-items:flex-start}}

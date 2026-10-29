@@ -27,6 +27,23 @@ export function taskGroups(companyId,tasks=[]) {
     .sort((a,b)=>(b.deletedAt||'').localeCompare(a.deletedAt||''));
   return {active,completed,deleted};
 }
+/**
+ * Conservative B2B CRM formatting: split explicit list markers and normalize whitespace.
+ * It does not summarize, infer needs or fabricate business facts.
+ */
+export function formatNeedsForCRM(value) {
+  const raw=String(value??'').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ')
+    .replace(/[\u200b-\u200d\ufeff]/g,'').replace(/[\t ]{2,}/g,' ')
+    .replace(/([①-⑳])/g,'\n$1 ')
+    .replace(/([;；])[ \t]*(?=\S)/g,'$1\n');
+  const items=raw.split(/\n+/)
+    .map(part=>part.trim().replace(/^(?:[•●▪\-]|[①-⑳]|\d{1,2}[.)])[ \t]*/,'').trim())
+    .filter(Boolean);
+  return items.map(s=>'• '+s).join('\n');
+}
+export function needsItems(value) {
+  return formatNeedsForCRM(value).split('\n').map(s=>s.replace(/^•\s*/, '').trim()).filter(Boolean);
+}
 export const ACTION_GROUPS = [
   '진행 중 — 과제 수행','진행 중 — 과제 신청 중','진행 중 — 실증·R&D 협력',
   '진행 중 — 영업 진행','연락해볼만함','모르겠음 — 담당자 확인',
