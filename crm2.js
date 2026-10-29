@@ -1,7 +1,7 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-multilist';
+  buildImportPlan,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-real-import';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
