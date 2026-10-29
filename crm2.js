@@ -1,6 +1,7 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
-  latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-multilist';
+  latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
+  buildImportPlan,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261029-multilist';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -66,6 +67,9 @@ const state={
   filters:{q:'',grade:'',market:'',group:'',stage:'',sort:'name',hasTask:false},
   oppFilter:'all',activityFilter:'all',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
+  importSelected:new Set(),importNewIds:{},importTaskIds:{},
+  importOptions:{replaceContacts:false,includeTasks:false},importBackup:null,
+  importBackupSaved:false,importApplying:false,importResult:'',
   loading:false,connected:false
 };
 const navNames={accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'영업 활동',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
@@ -292,25 +296,80 @@ function renderManager(){
 function importList(){
   return state.importPreview.filter(x=>state.importFilter==='all'||x.status===state.importFilter);
 }
+
+function importPlan(){
+  return buildImportPlan(state.importPreview,{
+    selected:state.importSelected,profiles:state.profiles,contacts:state.contacts,
+    tasks:state.tasks,newIds:state.importNewIds,taskIds:state.importTaskIds,
+    includeNew:true,replaceContacts:state.importOptions.replaceContacts,
+    includeTasks:state.importOptions.includeTasks
+  });
+}
+function invalidateImportBackup(){
+  state.importBackup=null;state.importBackupSaved=false;
+}
 function renderImport(){
-  const summary=countImportResults(state.importPreview),lst=importList();
-  return `${heading('최신 고객사 리스트 비교','기존 영업관리와 2027 고객사 분류 엑셀을 비교합니다. 업로드만으로는 서버 데이터를 수정하지 않습니다.',
-    `${btn('pick-file','엑셀·CSV 선택','primary')}${state.importRows.length?btn('export-diff','변경안 JSON 저장','secondary'):''}`)}
-  <div class="notice">① 파일 선택 → ② 업체명 대조 → ③ 차이점 검토 → ④ JSON 변경안 내보내기 또는 브라우저 임시 미리보기. <b>서버 DB 반영 버튼은 없습니다.</b> 담당자 이메일과 전화는 공개용 CRM 프로필에 저장되지 않습니다.</div>
+  const summary=countImportResults(state.importPreview),lst=importList(),plan=importPlan();
+  const eligible=state.isAdmin&&!state.demo;
+  const selected=state.importSelected.size;
+  return `${heading('최신 고객사 엑셀 · 실제 반영',
+    '기존 고객사와 대조해 선택한 항목만 안전하게 병합합니다. 파일만 선택하면 운영 DB는 변경되지 않습니다.',
+    `${btn('pick-file','엑셀·CSV 선택','primary')}${state.importRows.length?btn('export-diff','비교안 JSON 저장','secondary'):''}`)}
+  <div class="notice">원본 영업 이력·계약·진행 단계·기존 후속 업무는 그대로 유지합니다. 연락처는 <b>보호된 연락처 저장소</b>에만 쓰고, 엑셀의 '없음'은 정상 연락처를 덮어쓰지 않습니다. 신규 업체는 직접 선택해야 추가됩니다.</div>
   <input type="file" id="import-file" accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" class="hidden">
   <div class="import-row">
-    <div class="import-chip"><div class="num">${state.importRows.length}</div><div class="label">엑셀 원본 업체</div></div>
-    <div class="import-chip"><div class="num">${summary.new||0}</div><div class="label">사이트 미등록 후보</div></div>
-    <div class="import-chip"><div class="num">${summary.change||0}</div><div class="label">분류 변경 후보</div></div>
-    <div class="import-chip"><div class="num">${summary.conflict||0}</div><div class="label">이름 충돌 / 중복</div></div>
+    <div class="import-chip"><div class="num">${state.importRows.length}</div><div class="label">엑셀 업체</div></div>
+    <div class="import-chip"><div class="num">${summary.new||0}</div><div class="label">신규 업체 후보</div></div>
+    <div class="import-chip"><div class="num">${summary.conflict||0}</div><div class="label">이름 충돌</div></div>
+    <div class="import-chip"><div class="num">${selected}</div><div class="label">선택한 업체</div></div>
   </div>
-  <section class="panel"><div class="panel-head"><div><h2 class="panel-title">가져오기 비교 결과</h2><p class="panel-subtitle">${state.importFileName?esc(state.importFileName):'아직 업로드한 파일이 없습니다.'} ${state.importSessionApplied?'· 브라우저에서 임시 반영됨':''}</p></div>
-  ${state.importRows.length?btn('apply-session','브라우저에만 임시 반영','secondary'):''}</div>
-  <div class="toolbar"><select id="import-filter" class="select">${options([['all','전체'],['new','신규 후보'],['change','변경 후보'],['same','일치'],['conflict','중복·충돌']],state.importFilter)}</select><span class="small muted">비교 결과 ${lst.length}건</span></div>
-  <div class="table-scroll"><table class="table import-table"><thead><tr><th>No</th><th>업체명</th><th>비교 결과</th><th>엑셀 등급·지원공고사업분류</th><th>영업 분류</th><th>변경 항목</th></tr></thead><tbody>
-  ${lst.map((x,i)=>`<tr><td>${x.index+1}</td><td><span class="company-name">${esc(x.row.name)}</span></td><td>${tag({new:'사이트 미등록',change:'분류 변경',same:'일치',conflict:'확인 필요'}[x.status],{new:'warning',change:'b',same:'ok',conflict:'bad'}[x.status])}</td><td>${esc(x.row.accountGrade||'-')} / ${esc(x.row.market2027||'-')}</td><td>${esc(x.row.outreachBucket||'-')}</td><td>${esc(Object.keys(x.changes).length?Object.keys(x.changes).join(', '):'—')}</td></tr>`).join('')||`<tr><td colspan="6">${empty('고객사 최신 분류 엑셀을 업로드해 주세요.','"전체" 시트의 업체명·등급·11월 할 일·2027 시장을 읽습니다.')}</td></tr>`}
-  </tbody></table></div></section>
-  <div class="two-cols" style="margin-top:16px"><div class="callout"><h4>안전한 비교</h4><p>등급·지원공고사업분류·연락 명분·메모 등을 비교하지만, 원본에서 빈칸인 항목으로 기존 값을 지우지 않습니다. 자동으로 업체 이름을 수정하거나 새로운 업체를 등록하지 않습니다.</p></div><div class="callout"><h4>개인정보 보호</h4><p>이메일·전화번호는 브라우저에서만 파싱하며, 출력되는 변경안 JSON과 crm2Profiles 문서에는 포함하지 않습니다. 실제 연락처 변경은 기존 관리 시스템에서 별도 처리해야 합니다.</p></div></div>`;
+  ${state.importRows.length?`
+  <section class="panel" style="margin-bottom:16px">
+    <div class="panel-head"><div><h2 class="panel-title">반영할 내용</h2><p class="panel-subtitle">기존 데이터와의 차이점만 기록합니다. 처리 대상 ${plan.ops.length}개 문서</p></div></div>
+    <div class="panel-body">
+      <div class="import-actionbar">
+        ${btn('import-select-matched','기존 업체만 선택','secondary')}
+        ${btn('import-select-all','신규 포함 전체 선택','secondary')}
+        ${btn('import-select-clear','선택 해제','secondary')}
+      </div>
+      <div class="import-options">
+        <label><input id="import-replace-contacts" type="checkbox" ${state.importOptions.replaceContacts?'checked':''}> 기존 연락처도 유효한 엑셀 값으로 갱신하기</label>
+        <label><input id="import-include-tasks" type="checkbox" ${state.importOptions.includeTasks?'checked':''}> 엑셀 '사이트 다음 액션'을 새 후속 업무로 추가하기</label>
+      </div>
+      <div class="import-actionbar">
+        ${tag('업체 문서 '+plan.counts.companies,'outline')}
+        ${tag('분류·메모 '+plan.counts.profiles,'outline')}
+        ${tag('연락처 '+plan.counts.contacts,'outline')}
+        ${tag('새 후속 업무 '+plan.counts.tasks,'outline')}
+      </div>
+      <p class="small muted">기존 연락처 갱신을 선택하지 않으면 비어 있는 정보만 채웁니다. 후속 업무 추가는 기본적으로 꺼져 있으며, 선택하더라도 동일 제목의 기존 업무는 중복 생성하지 않습니다.</p>
+      ${!eligible?'<div class="notice warning">운영 DB 일괄 반영은 관리자 계정에서만 가능합니다. 데모에서는 저장할 수 없습니다.</div>':''}
+      <div class="import-actionbar import-safety-buttons">
+        <button type="button" class="btn secondary" data-action="import-backup" ${!eligible||!plan.ops.length||state.importApplying?'disabled':''}>① 변경 전 데이터 백업 다운로드</button>
+        <label><input id="import-backup-saved" type="checkbox" ${state.importBackupSaved?'checked':''} ${!state.importBackup?'disabled':''}> 백업 파일 보관을 확인했어요</label>
+        <button type="button" class="btn primary" data-action="import-commit" ${!eligible||!state.importBackup||!state.importBackupSaved||state.importApplying?'disabled':''}>② 선택한 업체 운영 DB 반영</button>
+      </div>
+      <div id="import-status" class="small muted" role="status">${esc(state.importResult||'백업 파일을 다운로드하고 보관 확인 후 반영할 수 있습니다.')}</div>
+      <p class="small muted">백업 JSON에는 연락처가 포함될 수 있습니다. 회사 내부에서 안전하게 보관하고 공개 저장소에 올리지 마세요.</p>
+    </div>
+  </section>`:''}
+  <section class="panel"><div class="panel-head"><div><h2 class="panel-title">업체별 반영 대상 선택</h2>
+     <p class="panel-subtitle">${state.importFileName?esc(state.importFileName):'파일을 먼저 선택하세요.'} · 기존 업체만 기본 선택</p></div>
+     ${state.importSessionApplied?tag('브라우저 임시 반영','warning'):''}</div>
+    <div class="toolbar"><select id="import-filter" class="select">${options([['all','전체'],['new','신규 후보'],['change','분류 변경'],['same','분류 동일'],['conflict','중복·충돌']],state.importFilter)}</select>
+      <span class="small muted">표시 ${lst.length}건</span></div>
+    <div class="table-scroll"><table class="table import-table"><thead><tr><th>적용</th><th>No</th><th>업체명</th><th>대조 결과</th><th>등급 / 지원공고사업분류</th><th>연락 분류</th><th>변경 항목</th></tr></thead><tbody>
+    ${lst.map(x=>`<tr>
+      <td><input type="checkbox" data-import-index="${x.index}" aria-label="${attr(x.row.name)} 반영" ${state.importSelected.has(x.index)?'checked':''} ${x.status==='conflict'||state.importApplying?'disabled':''}></td>
+      <td>${x.index+1}</td><td><span class="company-name">${esc(x.row.name)}</span></td>
+      <td>${tag({new:'사이트 미등록',change:'분류 변경',same:'분류 일치',conflict:'중복 확인 필요'}[x.status],{new:'warning',change:'b',same:'ok',conflict:'bad'}[x.status])}</td>
+      <td>${esc(x.row.accountGrade||'-')} / ${esc(x.row.market2027||'-')}</td>
+      <td>${esc(x.row.outreachBucket||'-')}</td>
+      <td>${esc(Object.keys(x.changes).length?Object.keys(x.changes).join(', '):'변경 비교 필요')}</td>
+    </tr>`).join('')||`<tr><td colspan="7">${empty('엑셀 파일을 올려 주세요.','전체 시트의 업체명·등급·담당자·연락처를 확인합니다.')}</td></tr>`}
+    </tbody></table></div>
+  </section>
+  ${state.importRows.length?'<div class="notice" style="margin-top:14px">충돌 업체는 자동 반영하지 않습니다. 회사명이 유사해도 다른 법인일 수 있으므로 신규 후보는 확인한 뒤 체크하세요.</div>':''}`;
 }
 function showModal(title,desc,fields,onSubmit){
   const layer=$('modalLayer');layer.classList.remove('hidden');layer.setAttribute('aria-hidden','false');
@@ -493,8 +552,13 @@ async function readImportFile(file){
   const mapped=sheetRowsToRecords(rows);
   if(!mapped.length)throw new Error('업체 정보가 없습니다. 시트 이름과 업체명 열을 확인해 주세요.');
   state.importRows=mapped;state.importPreview=getImportPreview(mapped,state.companies,state.profiles);
+  state.importSelected=new Set(state.importPreview.filter(x=>x.company&&x.status!=='conflict').map(x=>x.index));
+  state.importNewIds=Object.fromEntries(mapped.map((_,i)=>[i,uid()]));
+  state.importTaskIds=Object.fromEntries(mapped.map((_,i)=>[i,uid()]));
   state.importFileName=file.name;state.importSessionApplied=false;state.importFilter='all';
-  state.screen='import';render();toast(`${mapped.length}개 업체를 읽고 비교했습니다. 서버 데이터는 변경하지 않았습니다.`);
+  state.importOptions={replaceContacts:false,includeTasks:false};invalidateImportBackup();
+  state.importResult='검토 중 · 서버 데이터 변경 없음';
+  state.screen='import';render();toast(`${mapped.length}개 업체를 비교했습니다. 운영 DB는 변경하지 않았습니다.`);
 }
 function blobDownload(name,payload){
   const url=URL.createObjectURL(new Blob([payload],{type:'application/json;charset=utf-8'}));
@@ -511,6 +575,74 @@ function exportDiff(){
   },null,2));
   toast('병합 검토안을 저장했습니다. 운영 데이터에는 반영되지 않았습니다.');
 }
+
+function importBackupFingerprint(plan){return JSON.stringify(plan.ops);}
+async function downloadImportBackup(){
+  if(!state.isAdmin||state.demo)throw new Error('관리자 계정에서만 운영 데이터를 반영할 수 있습니다.');
+  if(state.importApplying)throw new Error('반영 중에는 백업을 다시 만들 수 없습니다.');
+  const plan=importPlan();
+  if(!plan.ops.length)throw new Error('변경할 문서가 없습니다. 선택 항목을 확인해 주세요.');
+  const docs=[];
+  for(const op of plan.ops){
+    const snapshot=await state.db.doc(op.path).get();
+    if(op.type==='create'&&snapshot.exists)throw new Error('신규 경로가 이미 등록되어 있습니다. 새로고침하고 비교해 주세요: '+op.path);
+    if(op.type==='patch'&&!snapshot.exists)throw new Error('기존 기록이 확인되지 않습니다: '+op.path);
+    docs.push({path:op.path,exists:!!snapshot.exists,previous:snapshot.exists?snapshot.data():null});
+  }
+  const backup={kind:'DMILLION CRM2 PRE-IMPORT BACKUP',createdAt:new Date().toISOString(),
+    sourceFileName:state.importFileName,
+    warning:'Contains confidential customer contacts; do not publish or share publicly.',
+    records:plan.records,documents:docs};
+  blobDownload('DMILLION_CRM2_import_backup_'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(backup,null,2));
+  state.importBackup={plan,docs,fingerprint:importBackupFingerprint(plan)};
+  state.importBackupSaved=false;
+  state.importResult=plan.ops.length+'개 변경 대상의 기존 데이터를 백업 파일로 내려받았습니다. 파일이 저장됐는지 확인해 주세요.';
+  render();
+}
+async function commitImport(){
+  if(!state.isAdmin||state.demo)throw new Error('관리자만 운영 데이터를 반영할 수 있습니다.');
+  if(state.importApplying)throw new Error('다른 반영 작업이 진행 중입니다.');
+  if(!state.importBackup||!state.importBackupSaved)throw new Error('백업 다운로드와 보관 확인이 필요합니다.');
+  const currentPlan=importPlan();
+  if(importBackupFingerprint(currentPlan)!==state.importBackup.fingerprint)
+    throw new Error('선택한 항목이 바뀌었습니다. 백업을 다시 내려받아 주세요.');
+  const {ops,counts}=currentPlan;
+  if(!ops.length)throw new Error('반영할 내용이 없습니다.');
+  if(!confirm(`선택된 ${counts.selected}개 업체의 ${ops.length}개 문서를 실제 운영 DB에 반영할까요?\n신규 업체 ${counts.new}곳, 연락처 문서 ${counts.contacts}건, 신규 업무 ${counts.tasks}건\n\n기존 업체·과제·미팅은 삭제하지 않습니다.`))return;
+  state.importApplying=true;
+  let completed=0;
+  try{
+    // Ensure the backup still describes the current DB state. Abort rather than overwrite other users' edits.
+    for(const prev of state.importBackup.docs){
+      const current=await state.db.doc(prev.path).get();
+      if(!!current.exists!==prev.exists || (current.exists&&JSON.stringify(current.data())!==JSON.stringify(prev.previous)))
+        throw new Error('다른 사용자가 변경한 데이터가 있습니다. 다시 비교·백업해 주세요: '+prev.path);
+    }
+    const progress=$('import-status');
+    if(progress)progress.textContent='운영 DB 반영을 시작합니다…';
+    for(const op of ops){
+      const ref=state.db.doc(op.path);
+      if(op.type==='patch')await ref.update(op.data);
+      else await ref.set(op.data);
+      completed++;
+      if(progress)progress.textContent=`운영 DB 반영 중: ${completed} / ${ops.length}개 문서`;
+    }
+    state.importResult=`반영 완료: ${counts.selected}개 업체 · ${completed}개 문서. 원본 영업 이력은 유지했습니다.`;
+    invalidateImportBackup();
+    await loadLive();
+    state.importPreview=getImportPreview(state.importRows,state.companies,state.profiles);
+    state.importSelected.clear();
+    toast('최신 고객사 자료를 운영 DB에 반영했습니다.');
+  }catch(error){
+    state.importResult=`반영 중단: ${completed}/${ops.length}개 처리. ${error.message} · 백업을 보관해 주세요.`;
+    console.error('CRM import error',error);
+    toast('운영 반영 오류: '+error.message,true);
+  }finally{
+    state.importApplying=false;
+    render();
+  }
+}
+
 function applyImportSession(){
   if(!state.importPreview.length)return;
   const summary=countImportResults(state.importPreview);
@@ -553,10 +685,32 @@ document.addEventListener('click',async e=>{
     else if(action==='pick-file')$('import-file')?.click();
     else if(action==='export-diff')exportDiff();
     else if(action==='apply-session')applyImportSession();
+    else if(action==='import-select-matched'){
+      state.importSelected=new Set(state.importPreview.filter(x=>x.company&&x.status!=='conflict').map(x=>x.index));
+      invalidateImportBackup();render();
+    } else if(action==='import-select-all'){
+      state.importSelected=new Set(state.importPreview.filter(x=>x.status!=='conflict').map(x=>x.index));
+      invalidateImportBackup();render();
+    } else if(action==='import-select-clear'){
+      state.importSelected.clear();invalidateImportBackup();render();
+    } else if(action==='import-backup')await downloadImportBackup();
+    else if(action==='import-commit')await commitImport();
   }catch(error){console.error(error);toast(error.message,true);}
 });
 document.addEventListener('change',async e=>{
   const id=e.target.id;
+  if(e.target.matches('[data-import-index]')){
+    const index=Number(e.target.dataset.importIndex);
+    if(e.target.checked)state.importSelected.add(index);else state.importSelected.delete(index);
+    invalidateImportBackup();render();return;
+  }
+  if(id==='import-backup-saved'){
+    state.importBackupSaved=e.target.checked;render();return;
+  }
+  if(id==='import-replace-contacts'||id==='import-include-tasks'){
+    state.importOptions[id==='import-replace-contacts'?'replaceContacts':'includeTasks']=e.target.checked;
+    invalidateImportBackup();render();return;
+  }
   const filters={'f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
   if(filters[id]){state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;render();return;}
   if(id==='opp-filter'){state.oppFilter=e.target.value;render();}

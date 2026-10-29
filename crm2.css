@@ -42,3 +42,14 @@
 .crm-category-helper{font-size:12px;color:#6b7b96;align-self:center;line-height:1.5}
 .crm-categories-box small{font-size:11px;color:#7b8aa1;line-height:1.5}
 @media(max-width:680px){.crm-task-row{flex-direction:column}.crm-task-row-actions{justify-content:flex-start}.crm-category-grid{max-height:260px}}
+
+/* Safe customer workbook import review and commit controls */
+.import-actionbar{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin:12px 0}
+.import-options{display:flex;flex-wrap:wrap;gap:10px 20px;margin:13px 0;padding:12px;background:#f8faff;border:1px solid #e1e8f5;border-radius:10px}
+.import-options label,.import-safety-buttons label{display:flex;align-items:center;gap:8px;font-size:12px;color:#455673;font-weight:600;cursor:pointer}
+.import-options input,.import-safety-buttons input{width:16px;height:16px;accent-color:#4955ca}
+.import-safety-buttons{border-top:1px solid #e7ebf2;padding-top:13px;margin-top:13px}
+.import-safety-buttons .btn:disabled{opacity:.45;cursor:not-allowed}
+.import-table input[type=checkbox]{accent-color:#4955ca;width:16px;height:16px;cursor:pointer}
+#import-status{min-height:22px;font-weight:700;margin:10px 0}
+@media(max-width:680px){.import-actionbar{align-items:stretch}.import-safety-buttons .btn{width:100%}.import-options{display:grid}}
