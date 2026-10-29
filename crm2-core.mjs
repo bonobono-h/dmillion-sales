@@ -17,6 +17,39 @@ export function programCategories(profile={}) {
   const legacy=plain(profile.market2027);
   return legacy?[legacy]:[];
 }
+/** Separate enumerated follow-up items for UI only; never change source data. */
+export function splitActionItems(value) {
+  const raw=String(value??'').replace(/\r\n?/g,'\n').replace(/\u00a0/g,' ').trim();
+  if(!raw)return [];
+  const marks=[...raw.matchAll(/[①-⑳]/g)];
+  if(marks.length){
+    const prefix=raw.slice(0,marks[0].index).trim();
+    return marks.map((m,i)=>{
+      const end=i+1<marks.length?marks[i+1].index:raw.length;
+      const body=raw.slice(m.index+m[0].length,end).trim().replace(/^[\s:：.·–-]+/,'').trim();
+      return {text:(i===0&&prefix?prefix+' ':'')+body,marker:m[0],index:i};
+    }).filter(x=>x.text.trim());
+  }
+  return raw.split(/\n+/).map((line,index)=>({
+    text:line.trim().replace(/^(?:[•●▪·*-]|\d{1,2}[.)])[ \t]+/,'').trim(),marker:'',index
+  })).filter(x=>x.text);
+}
+export function legacyActionKey(companyId,index,text) {
+  const input=String(companyId)+'|'+String(index)+'|'+String(text);
+  let hash=2166136261;
+  for(let i=0;i<input.length;i++)hash=Math.imul(hash^input.charCodeAt(i),16777619);
+  return 'legacy-v1-'+index+'-'+(hash>>>0).toString(36);
+}
+export function remainingLegacyActions(company,tasks=[]) {
+  const id=company?._id||company?.id,raw=plain(company?.nextAction);
+  if(!id||!raw)return [];
+  if(tasks.some(t=>t.companyId===id&&safeText(t.title)===raw))return [];
+  return splitActionItems(raw).map((p,index)=>({
+    ...p,key:legacyActionKey(id,index,p.text)
+  })).filter(p=>!tasks.some(t=>t.companyId===id&&
+    (t.sourceActionKey===p.key||(t.source==='legacy-nextAction'&&safeText(t.title)===p.text))
+  ));
+}
 export function taskGroups(companyId,tasks=[]) {
   const rows=tasks.filter(t=>t.companyId===companyId);
   const active=rows.filter(t=>!['done','cancelled','deleted'].includes(t.status))
@@ -213,9 +246,9 @@ export function nextActionFor(company,tasks=[]) {
   const related=tasks.filter(t=> t.companyId===company._id && !['done','cancelled','deleted'].includes(t.status))
     .sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
   if(related.length) return {...related[0],origin:'crm2'};
-  const old=plain(company.nextAction);
-  const duplicated=old&&tasks.some(t=>t.companyId===company._id&&safeText(t.title)===old);
-  return old&&!duplicated?{title:old,dueAt:company.nextDate||null,origin:'legacy'}:null;
+  const remainder=remainingLegacyActions(company,tasks);
+  return remainder.length?{title:remainder[0].text,dueAt:company.nextDate||null,
+    origin:'legacy',unconvertedCount:remainder.length}:null;
 }
 export function activityDate(row){return row.date||row.at||row.createdAt||'';}
 export function latestActivity(companyId,activities=[]){
