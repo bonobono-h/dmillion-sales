@@ -162,7 +162,7 @@ function renderAccounts(){
       <select id="f-sort" class="select" aria-label="정렬">${options([['name','업체명순'],['grade','등급순'],['action','다음 일정순'],['opportunities','영업 기회순']],f.sort,'정렬')}</select>
       <label class="small muted"><input type="checkbox" id="f-task" ${f.hasTask?'checked':''}> 후속 업무 있음</label>
     </div>
-    <div class="table-scroll"><table class="table"><thead><tr><th>업체</th><th>등급·분야</th><th>현재 단계</th><th>다음 행동</th></tr></thead><tbody>
+    <div class="table-scroll"><table class="table"><thead><tr><th>업체</th><th>등급·사업분류</th><th>현재 단계</th><th>다음 행동</th></tr></thead><tbody>
       ${list.map(c=>{
         const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c),contact=contactFor(c);
         return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0" aria-label="${attr(c.name)} 업체 상세">
@@ -283,10 +283,10 @@ function renderImport(){
   <section class="panel"><div class="panel-head"><div><h2 class="panel-title">가져오기 비교 결과</h2><p class="panel-subtitle">${state.importFileName?esc(state.importFileName):'아직 업로드한 파일이 없습니다.'} ${state.importSessionApplied?'· 브라우저에서 임시 반영됨':''}</p></div>
   ${state.importRows.length?btn('apply-session','브라우저에만 임시 반영','secondary'):''}</div>
   <div class="toolbar"><select id="import-filter" class="select">${options([['all','전체'],['new','신규 후보'],['change','변경 후보'],['same','일치'],['conflict','중복·충돌']],state.importFilter)}</select><span class="small muted">비교 결과 ${lst.length}건</span></div>
-  <div class="table-scroll"><table class="table import-table"><thead><tr><th>No</th><th>업체명</th><th>비교 결과</th><th>엑셀 등급·시장</th><th>영업 분류</th><th>변경 항목</th></tr></thead><tbody>
+  <div class="table-scroll"><table class="table import-table"><thead><tr><th>No</th><th>업체명</th><th>비교 결과</th><th>엑셀 등급·지원공고사업분류</th><th>영업 분류</th><th>변경 항목</th></tr></thead><tbody>
   ${lst.map((x,i)=>`<tr><td>${x.index+1}</td><td><span class="company-name">${esc(x.row.name)}</span></td><td>${tag({new:'사이트 미등록',change:'분류 변경',same:'일치',conflict:'확인 필요'}[x.status],{new:'warning',change:'b',same:'ok',conflict:'bad'}[x.status])}</td><td>${esc(x.row.accountGrade||'-')} / ${esc(x.row.market2027||'-')}</td><td>${esc(x.row.outreachBucket||'-')}</td><td>${esc(Object.keys(x.changes).length?Object.keys(x.changes).join(', '):'—')}</td></tr>`).join('')||`<tr><td colspan="6">${empty('고객사 최신 분류 엑셀을 업로드해 주세요.','"전체" 시트의 업체명·등급·11월 할 일·2027 시장을 읽습니다.')}</td></tr>`}
   </tbody></table></div></section>
-  <div class="two-cols" style="margin-top:16px"><div class="callout"><h4>안전한 비교</h4><p>등급·영업 시장·연락 명분·메모 등을 비교하지만, 원본에서 빈칸인 항목으로 기존 값을 지우지 않습니다. 자동으로 업체 이름을 수정하거나 새로운 업체를 등록하지 않습니다.</p></div><div class="callout"><h4>개인정보 보호</h4><p>이메일·전화번호는 브라우저에서만 파싱하며, 출력되는 변경안 JSON과 crm2Profiles 문서에는 포함하지 않습니다. 실제 연락처 변경은 기존 관리 시스템에서 별도 처리해야 합니다.</p></div></div>`;
+  <div class="two-cols" style="margin-top:16px"><div class="callout"><h4>안전한 비교</h4><p>등급·지원공고사업분류·연락 명분·메모 등을 비교하지만, 원본에서 빈칸인 항목으로 기존 값을 지우지 않습니다. 자동으로 업체 이름을 수정하거나 새로운 업체를 등록하지 않습니다.</p></div><div class="callout"><h4>개인정보 보호</h4><p>이메일·전화번호는 브라우저에서만 파싱하며, 출력되는 변경안 JSON과 crm2Profiles 문서에는 포함하지 않습니다. 실제 연락처 변경은 기존 관리 시스템에서 별도 처리해야 합니다.</p></div></div>`;
 }
 function showModal(title,desc,fields,onSubmit){
   const layer=$('modalLayer');layer.classList.remove('hidden');layer.setAttribute('aria-hidden','false');
@@ -334,7 +334,7 @@ function profileModal(){
   </select></label></div>
     <label id="crm2-new-category-row" style="display:none">새 지원공고사업분류
       <input name="newCategory" maxlength="60" placeholder="예: 스마트제조 AX·DX" autocomplete="off">
-      <small>저장하면 다른 담당자도 공통 분류로 선택할 수 있습니다.</small>
+      <small>${state.demo?'데모 분류는 새로고침하면 초기화됩니다.':'저장하면 다른 담당자도 공통 분류로 선택할 수 있습니다.'}</small>
     </label>
     ${field('영업 분류','outreachBucket',p.outreachBucket,{select:ACTION_GROUPS})}
     ${field('연락 명분 및 시점','contactReason',p.contactReason,{textarea:true})}
