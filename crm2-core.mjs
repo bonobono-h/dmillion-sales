@@ -84,6 +84,90 @@ export function profileFromRow(row) {
   for(const k of CRM_PROFILE_KEYS) if(plain(row[k])) data[k]=plain(row[k]);
   return data;
 }
+
+/**
+ * Import planning is local and pure. Customer records must never be committed to GitHub.
+ * Existing activity/project/task documents are intentionally outside this plan.
+ */
+export function usableImportEmail(raw) {
+  const s=plain(raw);
+  return /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(s)?s:'';
+}
+export function usableImportPhone(raw) {
+  const s=plain(raw);
+  return /(?:\+82[\s().-]?|0)(?:10|11|16|17|18|19|2|[3-6]\d)[\s().-]?\d{3,4}[\s().-]?\d{4}/.test(s)?s:'';
+}
+export function buildImportPlan(preview,settings={}) {
+  const selected=settings.selected||new Set(),profiles=settings.profiles||{},
+    contacts=settings.contacts||{},tasks=settings.tasks||[],newIds=settings.newIds||{},
+    taskIds=settings.taskIds||{},replaceContacts=!!settings.replaceContacts,
+    includeNew=!!settings.includeNew,includeTasks=!!settings.includeTasks;
+  const ops=[],records=[],counts={selected:0,new:0,matched:0,skipped:0,contacts:0,profiles:0,companies:0,tasks:0};
+  for(const item of preview) {
+    if(!selected.has(item.index)||item.status==='conflict'||(item.status==='new'&&!includeNew)){
+      counts.skipped++;continue;
+    }
+    const row=item.row,company=item.company,id=company?company._id||company.id:newIds[item.index];
+    if(!id)throw new Error('신규 업체 식별번호가 없습니다: '+item.index);
+    const rowOps=[],basePath='companies/'+id,profilePath='crm2Profiles/'+id,
+      contactPath='data/contacts/items/'+id;
+    if(!company) {
+      const data={name:safeText(row.name),kind:'고객사',
+        stage:plain(row.excelStage)||'리드',
+        ...(plain(row.region)?{region:plain(row.region)}:{})};
+      rowOps.push({path:basePath,type:'create',data});
+      counts.companies++;counts.new++;
+    } else {
+      counts.matched++;
+      // Fill only missing location. Never overwrite the existing sales stage, owner, or next action.
+      if(!plain(company.region)&&plain(row.region)){
+        rowOps.push({path:basePath,type:'patch',data:{region:plain(row.region)}});
+        counts.companies++;
+      }
+    }
+    const old=profiles[id]||{},p=profileFromRow(row),cat=plain(row.market2027);
+    if(cat){
+      const merged=programCategories(old);
+      if(!merged.some(v=>v.normalize('NFKC').toLocaleLowerCase('ko')===cat.normalize('NFKC').toLocaleLowerCase('ko')))merged.push(cat);
+      p.programCategories=merged;
+    }
+    if(plain(row.excelStage))p.excelStage=plain(row.excelStage);
+    const profilePatch={};
+    for(const [key,value] of Object.entries(p)){
+      if(JSON.stringify(old[key])!==JSON.stringify(value))profilePatch[key]=value;
+    }
+    if(Object.keys(profilePatch).length){
+      rowOps.push({path:profilePath,type:old._id?'patch':'create',data:old._id?profilePatch:{...old,...profilePatch}});
+      counts.profiles++;
+    }
+    const ct=contacts[id]||{},ctPatch={};
+    const newName=plain(row.contactName);
+    const oldName=plain(ct.name||ct.person||ct.contactPerson||company?.contactPerson);
+    if(newName&&(replaceContacts||!oldName)&&newName!==plain(ct.name))ctPatch.name=newName;
+    const email=usableImportEmail(row.email),phone=usableImportPhone(row.phone);
+    if(email&&(replaceContacts||!usableImportEmail(ct.email))&&email!==ct.email)ctPatch.email=email;
+    if(phone&&(replaceContacts||!usableImportPhone(ct.phone))&&phone!==ct.phone)ctPatch.phone=phone;
+    if(Object.keys(ctPatch).length){
+      rowOps.push({path:contactPath,type:ct._id?'patch':'create',data:ct._id?ctPatch:{...ct,...ctPatch}});
+      counts.contacts++;
+    }
+    const next=plain(row.excelNextAction);
+    if(includeTasks&&next&&!tasks.some(t=>t.companyId===id&&safeText(t.title)===next)
+      &&safeText(company?.nextAction)!==next){
+      const taskId=taskIds[item.index];
+      if(!taskId)throw new Error('업무 식별번호가 없습니다: '+item.index);
+      rowOps.push({path:'tasks/'+taskId,type:'create',data:{
+        companyId:id,title:next,dueAt:null,status:'todo',priority:'normal',
+        source:'2027-customer-excel'
+      }});
+      counts.tasks++;
+    }
+    ops.push(...rowOps);
+    counts.selected++;records.push({index:item.index,name:row.name,companyId:id,new:!company,paths:rowOps.map(x=>x.path)});
+  }
+  return {ops,records,counts};
+}
+
 export function getImportPreview(rows,companies=[],profiles={}) {
   const index=new Map();
   for(const c of companies) {
