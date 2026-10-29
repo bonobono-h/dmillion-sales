@@ -14,6 +14,49 @@ const cid=c=>c._id||c.id;
 const uid=()=>typeof crypto!=='undefined' && crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
 const cc=name=>state.companies.find(x=>cid(x)===name);
 const cname=id=>cc(id)?.name||'업체 정보 없음';
+// Sensitive details come only from the authenticated contact collection or the current Excel preview.
+// Do not copy contact names, phone numbers or emails into crm2Profiles or public source files.
+const contactText=value=>{
+  if(Array.isArray(value))return value.map(contactText).filter(Boolean).join(' / ');
+  if(value && typeof value==='object')return contactText(value.name??value.value??value.email??value.phone??'');
+  return String(value??'').trim();
+};
+function contactFor(company){
+  if(!state.canWrite)return {person:'',phone:'',email:'',restricted:true};
+  const id=cid(company),p=state.profiles[id]||{},stored=state.contacts[id]||{};
+  const latest=state.importRows.find(r=>normalizeCompanyName(r.name)===normalizeCompanyName(company.name));
+  const pick=(...values)=>values.map(contactText).find(Boolean)||'';
+  return {
+    // An uploaded spreadsheet is session-only and may be newer than the existing site values.
+    person:pick(latest?.contactName,company.contactPerson,stored.contactPerson,stored.person,stored.name,p.contactName,company.contactName),
+    phone:pick(latest?.phone,stored.phone,stored.phones,company.phone),
+    email:pick(latest?.email,stored.email,stored.emails,company.email)
+  };
+}
+function contactDisplay(value,type='name'){
+  const display=contactText(value);
+  if(!display)return '<span class="empty-inline">미등록</span>';
+  let href='';
+  if(type==='phone'){
+    const normalized=display.replace(/[\s().-]/g,'');
+    if(/^\+?[0-9]{7,16}$/.test(normalized))href='tel:'+normalized;
+  }
+  if(type==='email' && /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(display))href='mailto:'+encodeURIComponent(display);
+  return href?`<a class="crm-contact-link" href="${attr(href)}">${esc(display)}</a>`:
+    `<span class="crm-contact-data">${esc(display)}</span>`;
+}
+function contactPanel(company){
+  const contact=contactFor(company);
+  const value=(v,t)=>contact.restricted?'<span class="empty-inline">영업 담당자 이상 열람</span>':contactDisplay(v,t);
+  return `<section class="crm-contact-card" aria-label="고객사 담당자와 연락처">
+    <div class="crm-contact-title"><strong>고객 담당자 · 연락처</strong><span>${state.demo?'가상 데이터':contact.restricted?'권한 제한':'기존 연락처 연결'}</span></div>
+    <div class="crm-contact-grid">
+      <div class="crm-contact-item"><div class="crm-contact-label">고객 담당자</div>${value(contact.person,'name')}</div>
+      <div class="crm-contact-item"><div class="crm-contact-label">전화번호</div>${value(contact.phone,'phone')}</div>
+      <div class="crm-contact-item"><div class="crm-contact-label">이메일</div>${value(contact.email,'email')}</div>
+    </div>
+  </section>`;
+}
 const $main=$('main');
 
 const state={
@@ -28,14 +71,14 @@ const state={
 const navNames={accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'영업 활동',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
 
 async function loadDemo(){
-  const {demoData}=await import('./crm2-demo.mjs');
+  const {demoData}=await import('./crm2-demo.mjs?v=20261029-contacts');
   state.companies=structuredClone(demoData.companies);
   state.profiles=structuredClone(demoData.profiles);
   state.activities=structuredClone(demoData.activities);
   state.projects=structuredClone(demoData.projects);
   state.opportunities=structuredClone(demoData.opportunities);
   state.tasks=structuredClone(demoData.tasks);
-  state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts={};
+  state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts=structuredClone(demoData.contacts||{});
   $('modePill').textContent='데모 · 가상 업체';$('modePill').classList.add('demo');
 }
 async function getDocs(db,path) {
@@ -111,9 +154,10 @@ function renderAccounts(){
     </div>
     <div class="table-scroll"><table class="table"><thead><tr><th>업체</th><th>등급·분야</th><th>현재 단계</th><th>다음 행동</th></tr></thead><tbody>
       ${list.map(c=>{
-        const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c);
+        const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c),contact=contactFor(c);
         return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0" aria-label="${attr(c.name)} 업체 상세">
-          <td><div class="company-name">${esc(c.name||'업체명 없음')}</div><div class="tiny muted truncate">${esc(c.industry||c.bizDetail||c.region||'업종 미입력')}</div></td>
+          <td><div class="company-name">${esc(c.name||'업체명 없음')}</div><div class="tiny muted truncate">${esc(c.industry||c.bizDetail||c.region||'업종 미입력')}</div>
+            ${state.canWrite?`<div class="crm-contact-brief"><span>고객 담당: ${esc(contact.person||'미등록')}</span><span>전화: ${contactDisplay(contact.phone,'phone')}</span><span>메일: ${contactDisplay(contact.email,'email')}</span></div>`:''}</td>
           <td>${tag(p.accountGrade||'미분류',(p.accountGrade||'').toLowerCase())}<div class="tiny muted" style="margin-top:5px">${esc(p.market2027||'시장 미분류')}</div></td>
           <td>${tag(c.stage||'기록 없음','outline')}</td>
           <td><div class="tiny truncate">${esc(n?.title||'등록된 액션 없음')}</div><div class="tiny muted">${n?.dueAt?asDate(n.dueAt):''}</div></td></tr>`;
@@ -128,9 +172,9 @@ function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
   const p=state.profiles[cid(c)]||{},opp=state.opportunities.filter(x=>x.companyId===cid(c)),
     acts=state.activities.filter(x=>x.companyId===cid(c)).sort((a,b)=>activityDate(b).localeCompare(activityDate(a))),
-    t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),next=nextActionFor(c,t);
+    t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),next=nextActionFor(c,t),contact=contactFor(c);
   const overview=`<div class="section-label">업체 핵심정보</div>
-    <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>담당자</dt><dd>${state.canWrite?blank(p.contactName||c.contactName):'<span class="empty-inline">영업 담당자만 열람</span>'}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
+    <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>고객 담당</dt><dd>${state.canWrite?contactDisplay(contact.person):'<span class="empty-inline">영업 담당자만 열람</span>'}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
     <div class="divider"></div><div class="section-label">고객의 핵심 니즈</div><p class="text-body">${blank(c.needs||p.statusSummary)}</p>
     ${p.contactReason?`<div class="insight"><strong>↗ 연락 명분·시점</strong><p>${esc(p.contactReason)}</p></div>`:''}
     ${p.salesComment?`<div class="insight"><strong>✎ 영업 메모</strong><p>${esc(p.salesComment)}</p></div>`:''}
@@ -139,17 +183,12 @@ function renderCompanyDetail(){
       <div class="mini-head"><strong class="mini-title">${esc(next?.title||'등록된 후속 업무가 없습니다.')}</strong>${next?.origin==='legacy'?tag('기존 기록','outline'):next?tag('CRM 2.0','ok'):''}</div>
       <p class="mini-desc">${next?.dueAt?asDate(next.dueAt):'기한 미정'} · ${next?'업무를 완료하면 다음 액션을 확인해 주세요.':'후속 업무를 등록하면 여기에 나타납니다.'}</p>
     </div><div class="detail-actions">${btn('edit-profile','고객 정보 정리','secondary')}${btn('new-task','＋ 후속 업무','primary')}</div>`;
-  const imported=state.importRows.find(x=>normalizeCompanyName(x.name)===normalizeCompanyName(c.name));
-  const protectedContact=state.canWrite?(state.contacts[cid(c)]||{}):{};
-  const contactNames=state.canWrite?(protectedContact.name||protectedContact.person||imported?.contactName||p.contactName||c.contactName):null;
-  const emails=state.canWrite?(protectedContact.email||protectedContact.emails||imported?.email):null;
-  const phones=state.canWrite?(protectedContact.phone||protectedContact.phones||imported?.phone):null;
-  const showContacts=(v)=>Array.isArray(v)?v.map(x=>typeof x==='object'?JSON.stringify(x):String(x)).join(' / '):v;
-  const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${state.canWrite?blank(showContacts(contactNames)):'영업 담당자만 열람'}</dd>
-    <dt>이메일</dt><dd>${state.canWrite?blank(showContacts(emails)):'영업 담당자만 열람'}</dd>
-    <dt>전화</dt><dd>${state.canWrite?blank(showContacts(phones)):'영업 담당자만 열람'}</dd></dl>
-    <div class="divider"></div><div class="notice">개인 연락처는 기존 앱의 보호된 <b>data/contacts</b> 저장소를 사용합니다. 엑셀로 조회한 연락처는 현재 브라우저 세션에만 유지되고 새 공개 프로필 문서에는 저장되지 않습니다.</div>
-    <div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 시스템에서 연락처 열기 ↗</a></div>`;
+  const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
+  const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
+    <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
+    <dt>이메일</dt><dd>${showContact(contact.email,'email')}</dd></dl>
+    <div class="divider"></div><div class="notice">전화번호·이메일은 기존 앱의 보호된 <b>data/contacts</b> 저장소에서 읽습니다. 최신 고객사 엑셀을 업로드하면 이 브라우저에서만 최신 값을 우선 표시하며, 확인 전에는 서버 정보를 덮어쓰지 않습니다.</div>
+    <div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 시스템에서 연락처 수정 ↗</a></div>`;
   const opportunities=`<div class="section-label">진행 중 / 종료 영업 기회 · ${opp.length}건</div><div class="mini-list">${opp.map(o=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(o.title)}</h3>${tag(STAGE_LABEL[o.stage]||o.stage,'outline')}</div><p class="mini-desc">${esc(o.solution||o.solutionTags?.join(', ')||'분야 미입력')} · ${moneyKRW(o.estimatedAmount)} · ${esc(o.owner||'담당 미지정')}</p>
     ${state.canWrite?`<div class="detail-actions">${btn('edit-opportunity','영업 기회 편집','secondary',`data-id="${attr(cid(o))}"`)}</div>`:''}</div>`).join('')||empty('등록된 영업 기회가 없습니다.','업체당 여러 제안을 별도 관리할 수 있습니다.')}</div>
     <div class="detail-actions">${state.canWrite?btn('new-opportunity','＋ 영업 기회 추가','primary'):''}</div>`;
@@ -159,6 +198,7 @@ function renderCompanyDetail(){
   const map={overview,people,opportunities,activities,projects:projectsHtml,documents};
   return `<div class="panel-body"><div class="detail-top"><div>${tag(p.accountGrade?`${p.accountGrade}등급`:'등급 미지정',(p.accountGrade||'').toLowerCase())}<h2 class="detail-name">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'산업 분류 없음')} · ${esc(c.region||p.region||'지역 미입력')}</p></div>${state.canWrite?`<button type="button" class="btn secondary" data-action="edit-profile">편집</button>`:''}</div>
     <div class="badge-row">${tag(p.market2027||'시장 미분류','outline')}${tag(c.stage||'단계 미입력','outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
+    ${contactPanel(c)}
     <div class="divider"></div><div class="mini-list" style="grid-template-columns:repeat(3,1fr)"><div><strong>${opp.length}</strong><p class="tiny muted">영업 기회</p></div><div><strong>${acts.length}</strong><p class="tiny muted">활동 기록</p></div><div><strong>${projects.length}</strong><p class="tiny muted">연계 과제</p></div></div></div>
     <div class="tabs" role="tablist">${detailTabs.map(([k,v])=>`<button class="tab ${state.companyTab===k?'active':''}" role="tab" aria-selected="${state.companyTab===k}" data-action="company-tab" data-tab="${k}">${v}</button>`).join('')}</div>
     <div class="panel-body detail-scroll">${map[state.companyTab]||overview}</div>`;
@@ -406,6 +446,7 @@ document.addEventListener('click',async e=>{
   const closer=e.target.closest('[data-close]');if(closer){closeModal();return;}
   const nav=e.target.closest('[data-nav]');
   if(nav){state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();return;}
+  if(e.target.closest('a[href^="tel:"], a[href^="mailto:"]'))return;
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
   try{
