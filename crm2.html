@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1730">
   <title>DMILLION CRM 2.0 · 업체 중심 영업관리</title>
-  <link rel="stylesheet" href="crm2.css?v=20261030-intake-1">
+  <link rel="stylesheet" href="crm2.css?v=20261030-intake-body-2">
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
     window.CRM2_DEMO = demo;
@@ -18,7 +18,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261030-intake-1');
+    await import('./crm2.js?v=20261030-intake-body-2');
   </script>
 </head>
 <body>

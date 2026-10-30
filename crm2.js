@@ -3,7 +3,7 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
   buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261030-coverage-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
-import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-1';
+import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};

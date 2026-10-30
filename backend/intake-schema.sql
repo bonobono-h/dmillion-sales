@@ -52,7 +52,7 @@ begin
  select data into co from public.docs where path='companies/'||p_company for update;
  if not found then raise exception 'company not found'; end if;
  if length(trim(coalesce(p_record->>'title','')))=0 or length(p_record->>'title')>160
-   or length(trim(coalesce(p_record->>'summary','')))=0 or length(p_record->>'summary')>8000 then raise exception 'title and summary required'; end if;
+   or length(trim(coalesce(p_record->>'summary','')))=0 or length(p_record->>'summary')>150000 then raise exception 'title and summary required'; end if;
  dt:=(p_record->>'date')::timestamptz;
  if dt is null or dt>now()+interval '5 minutes' then raise exception 'completed record date required'; end if;
  if s.source_type='meeting' and coalesce(p_record->>'type','') not in ('첫 미팅','현장 방문','내방','화상','제안·발표','미팅') then raise exception 'invalid meeting type'; end if;

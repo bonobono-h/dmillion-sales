@@ -8,12 +8,13 @@ insert into public.crm_intake_sources(id,owner_id,source_key,source_type,title,b
 values('9f802baa-aeb6-4013-a96a-bd01e2864de5',auth.uid(),'__intake_test__','meeting','가상 검증 미팅','할 일: 검증 업무',now()-interval '1 minute');
 set local role authenticated;
 select public.crm_intake_approve('9f802baa-aeb6-4013-a96a-bd01e2864de5','__intake_test__',
- jsonb_build_object('title','가상 검증 미팅','summary','합성 자료 검증','date',now()-interval '1 minute','type','미팅'),
+ jsonb_build_object('title','가상 검증 미팅','summary',repeat('가',149995)||'본문끝확인','date',now()-interval '1 minute','type','미팅'),
  '[{"title":"가상 검증 업무","dueAt":null}]');
 select public.crm_intake_approve('9f802baa-aeb6-4013-a96a-bd01e2864de5','__intake_test__',
  jsonb_build_object('title','두 번째 호출','summary','중복 생성 금지','date',now()-interval '1 minute','type','미팅'),'[]');
 do $$ begin
  if (select count(*) from public.docs where path like 'activities/intake-9f802baa%')<>1 then raise exception 'activity retry failed'; end if;
+ if (select data->>'summary' from public.docs where path='activities/intake-9f802baa-aeb6-4013-a96a-bd01e2864de5')<>repeat('가',149995)||'본문끝확인' then raise exception 'long body lost'; end if;
  if (select count(*) from public.docs where path like 'tasks/intake-9f802baa%')<>1 then raise exception 'task retry failed'; end if;
  if (select data->>'stage' from public.docs where path='companies/__intake_test__')<>'리드' then raise exception 'company stage changed'; end if;
  if (select status from public.crm_intake_sources where id='9f802baa-aeb6-4013-a96a-bd01e2864de5')<>'approved' then raise exception 'source not approved'; end if;

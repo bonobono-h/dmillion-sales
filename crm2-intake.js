@@ -104,15 +104,16 @@ export function createIntakeUI({state,render,toast,showModal,reload}){
   if(source.status!=='pending'){
    showModal(source.title,'원문과 등록 결과를 확인합니다.',`<label>원문<textarea readonly rows="12">${esc(source.body)}</textarea></label><p>${esc(statusLabels[source.status])}</p>`,async()=>({message:'확인했습니다.'}));return;
   }
-  const preview=sourcePreview(source,state.companies,state.contacts),summary=String(source.body||'').split(/\r?\n/).filter(x=>x.trim()&&!/^\s*>/.test(x)).slice(0,5).join('\n').slice(0,1800);
+  const preview=sourcePreview(source,state.companies,state.contacts),summary=String(source.body||'');
   const taskFields=preview.tasks.map((t,i)=>`<div class="intake-task"><label class="intake-check"><input type="checkbox" name="taskUse" value="${i}"> 업무로 등록</label><label>업무<input name="taskTitle${i}" maxlength="180" value="${esc(t.title)}"></label><label>기한<input type="date" name="taskDue${i}" value="${esc(t.dueAt)}"></label><small>근거: ${esc(t.evidence)}</small></div>`).join('');
-  showModal('자료 검토·CRM 등록','정리본과 선택한 업무만 등록됩니다. 원문과 메일 주소는 개인 검토함에 남습니다.',
+  showModal('자료 검토·CRM 등록','저장하면 아래 본문과 선택한 업무가 CRM에 공유됩니다. 공유하지 않을 연락처·기밀정보는 본문에서 지워 주세요. 원문은 개인 검토함에 남습니다.',
    `<details><summary>원문 확인</summary><label>자료 원문<textarea readonly rows="10">${esc(source.body)}</textarea></label></details>
     <label>업체<select name="companyId" required>${companyOptions(preview.companyId)}</select><small>${esc(preview.candidates.map(c=>c.name+' ('+c.reason+')').join(', ')||'등록 업체 중 직접 선택해 주세요.')}</small></label>
     <label>등록 제목<input name="title" required maxlength="160" value="${esc(source.title.slice(0,160))}"></label>
     <label>실제 자료·미팅 일시<input name="date" type="datetime-local" required value="${esc(source.occurred_at?localDate(source.occurred_at):'')}"></label>
     ${source.source_type==='meeting'?'<label>미팅 유형<select name="meetingType"><option>미팅</option><option>첫 미팅</option><option>현장 방문</option><option>내방</option><option>화상</option><option>제안·발표</option></select></label>':''}
-    <label>CRM 공유용 정리본<textarea name="summary" required maxlength="8000" rows="6">${esc(summary)}</textarea><small>자동 요약이 아닌 원문 앞부분입니다. 사실관계와 연락처·기밀정보 포함 여부를 확인해 정리하세요.</small></label>
+    ${source.metadata?.bodyTruncated?'<p class="notice warning" role="alert">수집 용량 제한으로 원문 일부만 보관된 자료입니다. 메일은 다음메일에서, 문서는 원본 파일에서 전체 내용을 확인하세요.</p>':''}
+    <label>CRM에 등록할 본문<textarea class="intake-review-body" name="summary" required maxlength="150000" rows="12">${esc(summary)}</textarea><small>수집된 본문 전체를 불러왔습니다 (${summary.length.toLocaleString('ko-KR')}자). 아래로 스크롤하면 끝까지 확인할 수 있습니다. 필요한 내용을 수정한 뒤 저장하세요.</small></label>
     ${source.source_type==='document'&&source.metadata?.objectPath?`<label class="intake-check"><input type="checkbox" name="linkFile"> 원본을 기존 업체 문서함에도 등록 (${esc(preview.kind)})</label><small>선택하면 원본 파일이 기존 문서함 권한으로 공유됩니다.</small>`:''}
     <div class="section-label">후속업무 후보 · 확인한 항목만 체크</div>${taskFields||'<p class="small muted">명시된 업무 항목이 없습니다. 아래에 직접 입력할 수 있습니다.</p>'}
     <label>추가 업무 (한 줄에 하나)<textarea name="extraTasks" rows="3" placeholder="예: 샘플 수령 확인"></textarea></label>
@@ -120,6 +121,7 @@ export function createIntakeUI({state,render,toast,showModal,reload}){
      const companyId=String(fd.get('companyId')||'');if(!state.companies.some(c=>id(c)===companyId))throw new Error('등록 업체를 선택하세요.');
      const date=new Date(String(fd.get('date')));if(!Number.isFinite(date.getTime())||date.getTime()>Date.now()+300000)throw new Error('실제 완료된 자료·미팅 일시를 입력하세요.');
      const record={title:String(fd.get('title')).trim(),summary:String(fd.get('summary')).trim(),date:date.toISOString(),type:source.source_type==='email'?'메일':source.source_type==='document'?'자료 등록':String(fd.get('meetingType'))};
+     if(!record.summary||record.summary.length>150000)throw new Error('등록할 본문을 15만 자 이내로 입력하세요.');
      const tasks=fd.getAll('taskUse').map(i=>({title:String(fd.get('taskTitle'+i)).trim(),dueAt:String(fd.get('taskDue'+i)||'')||null}));
      for(const title of String(fd.get('extraTasks')||'').split(/\r?\n/).map(s=>s.trim()).filter(Boolean))tasks.push({title,dueAt:String(fd.get('extraDue')||'')||null});
      if(tasks.length>20||tasks.some(t=>!t.title||t.title.length>180))throw new Error('후속업무는 20개 이내, 각 180자 이내로 입력하세요.');
