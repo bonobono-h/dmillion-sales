@@ -550,7 +550,11 @@ function showModal(title,desc,fields,onSubmit){
   const form=$('dialogForm');
   form.onsubmit=async e=>{
     e.preventDefault();const save=$('dialogSave');save.disabled=true;save.textContent='저장 중…';
-    try{await onSubmit(new FormData(form));closeModal();render();toast(state.demo?'시연 화면에 적용했습니다. (서버 저장 없음)':'저장했습니다.');}
+    try{
+      const outcome=await onSubmit(new FormData(form));
+      closeModal();render();
+      toast(outcome?.message||(state.demo?'시연 화면에 적용했습니다. (서버 저장 없음)':'저장했습니다.'),!!outcome?.warning);
+    }
     catch(e){toast('저장 실패: '+e.message,true);}
     finally{save.disabled=false;save.textContent='저장';}
   };
@@ -666,6 +670,84 @@ function needsModal(){
     });
   updateNeedsPreview();
 }
+
+const MEETING_FORM_TYPES=['첫 미팅','현장 방문','내방','화상','제안·발표'];
+function meetingModal(){
+  if(!state.canWrite)return toast('미팅 기록 수정 권한이 없습니다.',true);
+  const candidates=state.companies.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));
+  if(!candidates.length)return toast('먼저 업체를 등록해 주세요.',true);
+  const selected=candidates.some(c=>cid(c)===state.selectedId)?state.selectedId:cid(candidates[0]);
+  showModal('미팅 이력 등록','작성한 미팅 기록은 기존 영업관리의 이력에서도 확인할 수 있습니다.',
+    `<label>고객사
+      <select name="companyId" required>${candidates.map(c=>`<option value="${attr(cid(c))}" ${cid(c)===selected?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+    </label>
+    <div class="form-row">
+      <label>미팅 일시 <input name="meetingAt" type="datetime-local" required value="${attr(localDateTime())}"></label>
+      <label>진행 상태 <select name="meetingStatus">
+        <option value="완료">완료</option><option value="예정">예정</option>
+      </select></label>
+    </div>
+    <div class="form-row">
+      <label>미팅 유형 <select name="meetingType">${MEETING_FORM_TYPES.map(t=>`<option value="${attr(t)}">${esc(t)}</option>`).join('')}</select></label>
+      <label>고객 측 참석자 <input name="attendeesClient" maxlength="200" placeholder="확인된 참석자만 입력"></label>
+    </div>
+    <label>디밀리언 참석자 <input name="attendeesUs" maxlength="200" placeholder="예: 담당 매니저, PM"></label>
+    <label>미팅 제목 <input name="meetingTitle" required maxlength="160" placeholder="예: 로봇 자동화 도입 요구사항 논의"></label>
+    <label>핵심 내용 <textarea name="meetingSummary" required maxlength="8000" rows="4"
+      placeholder="고객이 요청한 내용과 논의 결과를 간결하게 기록하세요. 확인되지 않은 내용은 [확인 필요]로 남기세요."></textarea></label>
+    <div class="crm-meeting-followup">
+      <strong>미팅 후속 업무 <span class="muted">선택 사항</span></strong>
+      <label>다음 해야 할 일 <input name="nextAction" maxlength="180" placeholder="예: 기술 제안서 초안 발송"></label>
+      <label>마감일 <input name="nextDue" type="date"><small>일정이 정해지지 않았다면 비워 두세요.</small></label>
+      <label class="crm-inline-check"><input name="createTask" type="checkbox" checked>
+        다음 해야 할 일을 CRM 후속 업무에도 등록</label>
+    </div>
+    <div class="crm-meeting-form-note">회사 상태나 진행 단계는 자동 변경하지 않습니다. 후속 업무를 등록하지 않아도 미팅 이력은 저장됩니다.</div>`,
+    async fd=>{
+      const companyId=safeText(fd.get('companyId'));
+      if(!state.companies.some(c=>cid(c)===companyId))throw new Error('등록된 업체를 선택해 주세요.');
+      const dateValue=safeText(fd.get('meetingAt'));
+      const time=new Date(dateValue);
+      if(!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(dateValue)||Number.isNaN(time.getTime()))
+        throw new Error('미팅 일시를 정확하게 입력해 주세요.');
+      const type=safeText(fd.get('meetingType'));
+      if(!MEETING_FORM_TYPES.includes(type))throw new Error('지원하지 않는 미팅 유형입니다.');
+      const status=safeText(fd.get('meetingStatus'));
+      if(!['완료','예정'].includes(status))throw new Error('미팅 상태를 선택해 주세요.');
+      const title=safeText(fd.get('meetingTitle')),summary=safeText(fd.get('meetingSummary'));
+      if(!title||!summary)throw new Error('미팅 제목과 핵심 내용을 입력해 주세요.');
+      if(title.length>160||summary.length>8000)throw new Error('제목 또는 본문이 너무 깁니다.');
+      const nextAction=safeText(fd.get('nextAction')),nextDue=safeText(fd.get('nextDue'));
+      if(nextDue&&!nextAction)throw new Error('후속 일정이 있다면 다음 해야 할 일도 입력해 주세요.');
+      const createdAt=new Date().toISOString(),id=uid();
+      const record={companyId,date:time.toISOString(),type,title,summary,status,
+        attendeesClient:safeText(fd.get('attendeesClient')),
+        attendeesUs:safeText(fd.get('attendeesUs')),
+        nextAction,nextDue,createdAt,updatedAt:createdAt,source:'crm2'};
+      // The existing sales-management app uses the same activities collection.
+      await saveDoc('activities',id,record);
+      state.activities.push({_id:id,...record});
+      state.selectedId=companyId;state.companyTab='activities';state.screen='accounts';
+      if(nextAction&&fd.get('createTask')==='on'){
+        const exists=state.tasks.some(t=>t.companyId===companyId&&safeText(t.title)===nextAction&&
+          !['done','cancelled','deleted'].includes(t.status));
+        if(exists)return {message:'미팅을 저장했습니다. 같은 내용의 미완료 업무가 이미 있어 중복 등록하지 않았습니다.'};
+        const taskId=uid(),task={companyId,title:nextAction,status:'todo',
+          dueAt:nextDue||null,assigneeId:state.userId||null,
+          priority:'normal',sourceActivityId:id,createdAt};
+        try{
+          await saveDoc('tasks',taskId,task);
+          state.tasks.push({_id:taskId,...task});
+          return {message:state.demo?'데모: 미팅·후속 업무가 추가됐습니다. (서버 저장 없음)':'미팅과 후속 업무를 저장했습니다.'};
+        }catch(error){
+          console.error('Meeting was saved but follow-up task failed',error);
+          return {message:'미팅은 저장됐지만 후속 업무 등록은 실패했습니다. 후속 업무를 별도로 추가해 주세요.',warning:true};
+        }
+      }
+      return {message:state.demo?'데모: 미팅이 추가됐습니다. (서버 저장 없음)':'미팅 이력을 저장했습니다.'};
+    });
+}
+
 function opportunityModal(id=null){
   if(!state.canWrite)return toast('수정 권한이 없습니다.',true);
   const current=state.opportunities.find(o=>cid(o)===id),c=cc(state.selectedId);
@@ -700,7 +782,7 @@ function taskModal(){
   const companies=state.companies.filter(x=>x.kind!=='협력사').sort((a,b)=>a.name.localeCompare(b.name,'ko'));
   showModal('후속 업무 등록','하나의 업무를 원본으로 관리하며 업체 화면에 자동으로 표시합니다.',
     `<label>업체 <select required name="companyId" id="modalCompany">${companies.map(c=>`<option value="${attr(cid(c))}" ${state.selectedId===cid(c)?'selected':''}>${esc(c.name)}</option>`).join('')}</select></label>
-    <label>해야 할 일 <input required name="title" maxlength="180" placeholder="예: 고객 요구사항 확인 통화"></label>
+    <label>해야 할 일 <input required name="title" maxlength="180" placeholder="예: 고객사 미팅 일정 확정"></label>
     <div class="form-row"><label>마감일 <input name="dueAt" type="date"><small>일정이 정해지지 않았다면 비워 두세요.</small></label>
       <label>우선순위 <select name="priority">${options([['normal','일반'],['high','높음'],['low','낮음']],'normal','일반')}</select></label></div>`,
     async fd=>{
@@ -936,6 +1018,7 @@ document.addEventListener('click',async e=>{
       const raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
       if(raw&&summary){summary.value=formatNeedsForCRM(raw.value);updateNeedsPreview();summary.focus();}
     }
+    else if(action==='new-meeting')meetingModal();
     else if(action==='new-opportunity')opportunityModal();
     else if(action==='edit-opportunity')opportunityModal(id);
     else if(action==='new-task')taskModal();
