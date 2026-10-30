@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1730">
   <title>DMILLION CRM 2.0 · 업체 중심 영업관리</title>
-  <link rel="stylesheet" href="crm2.css?v=20261029-action-cards-1">
+  <link rel="stylesheet" href="crm2.css?v=20261030-crm-workflow-1">
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
     window.CRM2_DEMO = demo;
@@ -18,7 +18,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261030-scrollfix-1');
+    await import('./crm2.js?v=20261030-crm-workflow-1');
   </script>
 </head>
 <body>
@@ -30,7 +30,7 @@
       <button data-nav="accounts" class="nav-link active"><span class="nav-glyph">▦</span> 업체 관리 <span class="nav-chevron">›</span></button>
       <button data-nav="home" class="nav-link"><span class="nav-glyph">◷</span> 오늘의 영업 <span class="nav-chevron">›</span></button>
       <button data-nav="opportunities" class="nav-link"><span class="nav-glyph">◇</span> 영업 기회 <span class="nav-chevron">›</span></button>
-      <button data-nav="activities" class="nav-link"><span class="nav-glyph">☷</span> 영업 활동 <span class="nav-chevron">›</span></button>
+      <button data-nav="activities" class="nav-link"><span class="nav-glyph">☷</span> 미팅 이력 <span class="nav-chevron">›</span></button>
       <button data-nav="manager" class="nav-link"><span class="nav-glyph">◫</span> 관리자 분석 <span class="nav-chevron">›</span></button>
     </nav>
     <div class="side-section side-secondary">MANAGEMENT</div>
@@ -40,7 +40,7 @@
     </nav>
     <div class="sidebar-bottom">
       <div class="side-help">기존 시스템과 데이터를 공유하는 새로운 CRM 화면입니다. 운영 데이터를 자동으로 덮어쓰지 않습니다.</div>
-      <div class="version">CRM 2.0 · 시범 버전 0.3</div>
+      <div class="version">CRM 2.0 · 시범 버전 0.4</div>
     </div>
   </aside>
   <section class="workspace">
