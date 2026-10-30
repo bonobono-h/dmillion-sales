@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1730">
   <title>DMILLION CRM 2.0 · 업체 중심 영업관리</title>
-  <link rel="stylesheet" href="crm2.css?v=20261030-crm-workflow-1">
+  <link rel="stylesheet" href="crm2.css?v=20261030-coverage-1">
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
     window.CRM2_DEMO = demo;
@@ -18,7 +18,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261030-crm-workflow-1');
+    await import('./crm2.js?v=20261030-coverage-1');
   </script>
 </head>
 <body>
@@ -27,7 +27,8 @@
     <div class="brand"><span class="brand-mark">D</span><div><strong>DMILLION</strong><small>SALES INTELLIGENCE</small></div></div>
     <div class="side-section">CRM WORKSPACE</div>
     <nav id="sideNav" class="side-nav">
-      <button data-nav="accounts" class="nav-link active"><span class="nav-glyph">▦</span> 업체 관리 <span class="nav-chevron">›</span></button>
+      <button data-nav="coverage" class="nav-link active"><span class="nav-glyph">▤</span> 고객 관리 현황 <span class="nav-chevron">›</span></button>
+      <button data-nav="accounts" class="nav-link"><span class="nav-glyph">▦</span> 업체 관리 <span class="nav-chevron">›</span></button>
       <button data-nav="home" class="nav-link"><span class="nav-glyph">◷</span> 오늘의 영업 <span class="nav-chevron">›</span></button>
       <button data-nav="opportunities" class="nav-link"><span class="nav-glyph">◇</span> 영업 기회 <span class="nav-chevron">›</span></button>
       <button data-nav="activities" class="nav-link"><span class="nav-glyph">☷</span> 미팅 이력 <span class="nav-chevron">›</span></button>
@@ -57,3 +58,4 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 </body>
 </html>
+

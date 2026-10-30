@@ -1,7 +1,8 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261030-crm-workflow-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261030-coverage-1';
+import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -64,7 +65,8 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:new URLSearchParams(location.search).get('view')==='import'?'import':'accounts',companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
+  coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
   filters:{q:'',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
@@ -74,7 +76,7 @@ const state={
   importBackupSaved:false,importApplying:false,importResult:'',
   loading:false,connected:false,legacyImporting:false
 };
-const navNames={accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
+const navNames={coverage:'고객 관리 현황',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -151,7 +153,7 @@ function render(){
   const detailScroll=detailBody?detailBody.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
   $('crumb').textContent=navNames[state.screen]||state.screen;
-  const body={accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
+  const body={coverage:renderCoverage,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
@@ -196,6 +198,52 @@ function activeAccountList(){
 }
 function options(items,v,placeholder='전체'){
   return `<option value="">${esc(placeholder)}</option>`+items.map(x=>{const [value,label]=Array.isArray(x)?x:[x,x];return `<option value="${attr(value)}" ${v===value?'selected':''}>${esc(label)}</option>`;}).join('');
+}
+
+function renderCoverage(){
+  const f=state.coverage, today=localToday();
+  const all=buildCoverage(state.companies,state.profiles,state.activities,state.tasks,{today,threshold:f.threshold});
+  const scoped=filterCoverage(all,{...f,status:'all'}),rows=filterCoverage(all,f);
+  const owners=[...new Set(state.companies.map(c=>plain(c.owner)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  const labels=Object.fromEntries(COVERAGE_STATES),groups=Object.fromEntries(BUSINESS_GROUPS);
+  const tones={review:'warning',uncontacted:'outline',stale:'warning',followup:'bad',healthy:'ok',waiting:'outline'};
+  return `${heading('고객 관리 현황','누가 관리되고 있고, 어떤 고객에게 후속 연락이 필요한지 확인합니다.',btn('coverage-accounts','업체 상세 보기','secondary'))}
+    <div class="coverage-filters panel">
+      <div class="toolbar">
+        <label>대상 <select class="select" id="coverage-kind">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],f.kind,'대상 선택')}</select></label>
+        <label>내부 담당 <select class="select" id="coverage-owner">${options([['__none','담당 미지정'],...owners],f.owner,'담당 전체')}</select></label>
+        <label>영업 분류 <select class="select" id="coverage-group">${options(BUSINESS_GROUPS,f.group,'분류 전체')}</select></label>
+        <label>사업분류 <select class="select" id="coverage-market">${options(categoryChoices(),f.market,'사업분류 전체')}</select></label>
+        <label>미접촉 기준 <select class="select" id="coverage-threshold">${[14,30,60,90].map(n=>`<option value="${n}" ${Number(f.threshold)===n?'selected':''}>${n}일 초과</option>`).join('')}</select></label>
+      </div>
+      <div class="coverage-statuses" aria-label="고객 관리 상태 필터">
+        ${COVERAGE_STATES.map(([key,label])=>`<button type="button" data-action="coverage-status" data-status="${key}" class="coverage-status ${f.status===key?'active':''}" aria-pressed="${f.status===key}"><span>${label}</span><strong>${key==='all'?scoped.length:scoped.filter(r=>r.status===key).length}</strong></button>`).join('')}
+      </div>
+    </div>
+    <section class="panel coverage-panel">
+      <div class="panel-head"><div><h2 class="panel-title">업체별 관리 리스트</h2><p class="panel-subtitle">${rows.length}곳 · ${labels[f.status]} · ${today} 기준</p></div></div>
+      <div class="toolbar">
+        <input class="field search-input" id="coverage-q" aria-label="관리 현황 검색" placeholder="업체명 · 내부 담당 · 다음 할 일 검색" value="${attr(f.q)}">
+        <select class="select" id="coverage-sort" aria-label="관리 현황 정렬">${options([['attention','확인 필요한 순'],['last','오래 미접촉한 순'],['name','업체명순']],f.sort,'정렬')}</select>
+      </div>
+      <div class="table-scroll coverage-scroll"><table class="table coverage-table"><thead><tr>
+        <th scope="col">업체 · 사업분류</th><th scope="col">영업 분류</th><th scope="col">내부 담당</th><th scope="col">마지막 연락</th><th scope="col">미접촉</th><th scope="col">다음 할 일 · 기한</th><th scope="col">관리 상태 · 이유</th>
+      </tr></thead><tbody>${rows.map(r=>`<tr data-action="go-company" data-id="${attr(r.id)}" tabindex="0" aria-label="${attr(r.company.name)} 업체 상세">
+        <td><strong class="company-name">${esc(r.company.name)}</strong><div class="coverage-sub">${esc(r.company.kind||'고객사')} · ${esc(r.categories.join(', ')||'사업분류 미정')}</div></td>
+        <td>${esc(groups[r.group])}<div class="coverage-sub">기록 단계: ${esc(r.company.stage||'미입력')}</div></td>
+        <td>${esc(r.owner||'미지정')}</td>
+        <td>${esc(r.lastContact||'접촉 기록 없음')}<div class="coverage-sub">완료 접촉 ${r.contactCount}건</div></td>
+        <td>${r.days===null?'—':`<strong class="${r.days>Number(f.threshold)?'coverage-alert':''}">${r.days}일</strong>`}</td>
+        <td>${r.actions.length?`<div class="coverage-action">${esc(r.actions[0].title)}</div><div class="coverage-sub">${r.actions[0].due?esc(r.actions[0].due):'기한 미정'}${r.actions[0].source==='meeting'?' · 예정 미팅':''}${r.actions.length>1?` · 외 ${r.actions.length-1}건`:''}</div>`:'<span class="empty-inline">다음 일정 없음</span>'}${r.overdue?`<div class="coverage-alert">기한 초과 ${r.overdue}건</div>`:''}${r.undated?`<div class="coverage-sub">기한 미정 ${r.undated}건</div>`:''}</td>
+        <td>${tag(labels[r.status],tones[r.status])}<div class="coverage-reason">${esc(r.reason)}</div></td>
+      </tr>`).join('')||`<tr><td colspan="7">${empty('조건에 맞는 고객이 없습니다.','대상 또는 관리 상태 필터를 변경하세요.')}</td></tr>`}</tbody></table></div>
+    </section>
+    <details class="coverage-guide"><summary>고객 분류·관리 상태 판단 기준</summary>
+      <p>영업 분류는 기존 업체 단계에서 묶어 표시합니다. 신규 발굴(리드·발굴), 니즈 확인(컨택·미팅·방문·과제신청 준비), 제안·견적(제안·협상), 계약·수행(계약·선정·수행·완료), 보류·종료입니다. 선정 표시는 수주 집계를 변경하지 않습니다.</p>
+      <p>마지막 연락은 완료된 미팅·방문·메일·전화·문자 기록 기준입니다. 메모·예정·취소·미래 완료 기록은 제외합니다. 접촉 기록 없음은 실제 미접촉 확정이 아니며, 진행 단계와 접촉 기록이 맞지 않으면 기록 확인 필요로 표시합니다.</p>
+      <p>관리 정상: 내부 담당 배정, ${Number(f.threshold)}일 이내 접촉, 다음 업무 또는 예정 미팅에 기한 등록, 기한 초과·기한 미정 업무 없음. 기록 확인 → 기한 초과 → 보류·종료 → 접촉 기록 없음 → 장기 미접촉 → 후속 조치 → 관리 정상 순으로 대표 상태를 표시합니다.</p>
+      <p>보류·종료 또는 영업 분류가 '차년도 공고 때 연락'인 업체는 일반 미접촉 고객과 구분하며 사유·재접촉 여부를 함께 봅니다. 기존 활동에 남은 후속 조치도 포함합니다. 실제 완료된 업무가 남아 있으면 해당 원본 기록에서 완료 여부를 정리하세요.</p>
+    </details>`;
 }
 
 function renderAccounts(){
@@ -1001,7 +1049,9 @@ document.addEventListener('click',async e=>{
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
   try{
-    if(action==='select-company')selectCompany(id,true);
+    if(action==='coverage-status'){state.coverage.status=a.dataset.status;render();}
+    else if(action==='coverage-accounts'){state.screen='accounts';render();}
+    else if(action==='select-company')selectCompany(id,true);
     else if(action==='go-company')selectCompany(id,false);
     else if(action==='show-meetings'){
       state.companyTab='activities';
@@ -1043,6 +1093,12 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('change',async e=>{
   const id=e.target.id;
+  if(id.startsWith('coverage-')){
+    const key=id.slice('coverage-'.length);
+    if(['kind','owner','group','market','sort','threshold'].includes(key)){
+      state.coverage[key]=key==='threshold'?Number(e.target.value):e.target.value;render();return;
+    }
+  }
   if(e.target.matches('[data-import-index]')){
     const index=Number(e.target.dataset.importIndex);
     if(e.target.checked)state.importSelected.add(index);else state.importSelected.delete(index);
@@ -1074,6 +1130,10 @@ document.addEventListener('change',async e=>{
   }
 });
 document.addEventListener('input',e=>{
+  if(e.target.id==='coverage-q'){
+    const pos=e.target.selectionStart;state.coverage.q=e.target.value;render();
+    const next=$('coverage-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);return;
+  }
   if(e.target.id==='crm2NeedsSource'||e.target.id==='crm2NeedsSummary'){
     updateNeedsPreview();return;
   }
@@ -1086,8 +1146,8 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();document.querySelector('.sidebar').classList.remove('open');}
-  if(e.key==='Enter'&&e.target.matches('tr[data-action="select-company"]')){
-    e.preventDefault();selectCompany(e.target.dataset.id,true);
+  if(e.key==='Enter'&&e.target.matches('tr[data-action="select-company"],tr[data-action="go-company"]')){
+    e.preventDefault();selectCompany(e.target.dataset.id,e.target.dataset.action==='select-company');
   }
 });
 $('refreshBtn').onclick=refresh;
