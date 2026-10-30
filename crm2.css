@@ -1,5 +1,18 @@
 :root{font-family:Inter,Arial,"Pretendard",-apple-system,BlinkMacSystemFont,"Malgun Gothic",sans-serif;color:#16213a;background:#f5f7fb;font-size:14px;--navy:#101b34;--purple:#4955ca;--purple2:#eef0ff;--ink:#18243d;--mute:#78849a;--border:#e2e7ef;--panel:#fff;--soft:#f7f9fc;--ok:#187a59;--warn:#bb7827;--bad:#b33a47;--shadow:0 8px 30px rgba(23,42,75,.06)}
 /* Customer coverage: the table scrolls inside its panel on narrow displays. */
+.intake-connection{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:18px}
+.intake-connection p{font-size:12px;line-height:1.7;color:#60708a;margin:9px 0 0}
+.intake-tabs{margin-top:18px}
+.intake-table{min-width:760px}
+.intake-table td{line-height:1.65;vertical-align:top}
+.intake-table td:nth-child(2){max-width:440px;overflow-wrap:anywhere}
+.intake-row-actions{display:flex;gap:7px;flex-wrap:wrap}
+.intake-row-actions .btn{font-size:11px;padding:7px 10px;min-height:34px}
+.intake-footnote{font-size:11px;color:#65748b;line-height:1.8;margin-top:16px}
+.intake-task{display:grid;gap:9px;padding:13px;border:1px solid #dfe5ee;border-radius:10px;background:#f8faff}
+.form .intake-check{display:flex;align-items:center;gap:8px;line-height:1.6}
+.form .intake-check input{width:16px;height:16px;min-height:0;accent-color:#4955ca}
+@media(max-width:780px){.intake-connection{align-items:flex-start;flex-direction:column}.intake-connection .heading-actions{flex-wrap:wrap}}
 .coverage-filters{margin-bottom:18px}
 .coverage-filters .toolbar{border-bottom:0;gap:12px 18px}
 .coverage-filters label{display:grid;gap:6px;font-size:11px;color:#526078;font-weight:700}

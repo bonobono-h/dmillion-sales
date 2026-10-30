@@ -3,6 +3,7 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
   buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261030-coverage-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
+import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -65,7 +66,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
   filters:{q:'',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
@@ -76,7 +77,8 @@ const state={
   importBackupSaved:false,importApplying:false,importResult:'',
   loading:false,connected:false,legacyImporting:false
 };
-const navNames={coverage:'고객 관리 현황',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
+const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
+const navNames={coverage:'고객 관리 현황',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -124,6 +126,7 @@ async function refresh(){
   state.loading=true;$('refreshBtn').disabled=true;
   try{
     if(state.demo)await loadDemo();else await loadLive();
+    if(state.screen==='intake')await intake.load();
     if(!cc(state.selectedId))state.selectedId=state.companies[0]?cid(state.companies[0]):null;
     render();toast(`${state.companies.length}개 업체를 불러왔습니다.`);
   }catch(e){console.error(e);toast('불러오기 실패: '+e.message,true);}finally{state.loading=false;$('refreshBtn').disabled=false;}
@@ -131,6 +134,7 @@ async function refresh(){
 async function boot(){
   try{
     if(state.demo)await loadDemo();else await loadLive();
+    if(state.screen==='intake')await intake.load();
     state.selectedId=state.companies[0]?cid(state.companies[0]):null;
     $('loadingScreen').classList.add('hidden');
     render();
@@ -153,7 +157,7 @@ function render(){
   const detailScroll=detailBody?detailBody.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
   $('crumb').textContent=navNames[state.screen]||state.screen;
-  const body={coverage:renderCoverage,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
+  const body={intake:intake.render,coverage:renderCoverage,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
@@ -1044,7 +1048,7 @@ function applyImportSession(){
 document.addEventListener('click',async e=>{
   const closer=e.target.closest('[data-close]');if(closer){closeModal();return;}
   const nav=e.target.closest('[data-nav]');
-  if(nav){state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();return;}
+  if(nav){state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
   if(e.target.closest('a[href^="tel:"], a[href^="mailto:"]'))return;
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
