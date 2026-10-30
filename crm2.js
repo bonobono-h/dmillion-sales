@@ -141,10 +141,49 @@ function btn(action,label,cls='secondary',extra=''){return `<button type="button
 function stat(label,num,foot,icon){return `<div class="stat"><div class="stat-row"><span class="label">${esc(label)}</span><span class="stat-icon">${icon}</span></div><div class="number">${esc(num)}</div><span class="foot">${esc(foot)}</span></div>`;}
 function empty(msg,sub=''){return `<div class="empty-state"><div class="symbol">◇</div><strong>${esc(msg)}</strong>${sub?`<p>${esc(sub)}</p>`:''}</div>`;}
 function render(){
+  // Preserve the scroll position of both independently scrollable panes whenever
+  // the account page must be re-rendered (e.g. a task was completed or edited).
+  const accountList=state.screen==='accounts'?$main.querySelector('.account-layout .table-scroll'):null;
+  const detailBody=state.screen==='accounts'?$main.querySelector('.account-layout .detail-scroll'):null;
+  const listScroll=accountList?{top:accountList.scrollTop,left:accountList.scrollLeft}:null;
+  const detailScroll=detailBody?detailBody.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
   $('crumb').textContent=navNames[state.screen]||state.screen;
   const body={accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
+  if(listScroll){
+    const next=$main.querySelector('.account-layout .table-scroll');
+    if(next){next.scrollTop=listScroll.top;next.scrollLeft=listScroll.left;}
+  }
+  if(detailScroll!==null){
+    const next=$main.querySelector('.account-layout .detail-scroll');
+    if(next)next.scrollTop=detailScroll;
+  }
+}
+/**
+ * Update only the right-hand company detail pane when selecting a row or tab.
+ * Replacing the whole #main used to recreate .table-scroll and jump the list
+ * back to its first row. This also preserves keyboard focus on the chosen row.
+ */
+function updateCompanyDetailOnly(){
+  if(state.screen!=='accounts')return false;
+  const panel=$main.querySelector('.account-layout > aside.panel');
+  if(!panel)return false;
+  panel.innerHTML=renderCompanyDetail();
+  $main.querySelectorAll('tr[data-action="select-company"]').forEach(row=>{
+    const selected=row.dataset.id===state.selectedId;
+    row.classList.toggle('selected',selected);
+    row.setAttribute('aria-current',selected?'true':'false');
+  });
+  return true;
+}
+function selectCompany(id,updateInPlace=true){
+  if(!cc(id))return;
+  state.selectedId=id;
+  state.companyTab='overview';
+  if(updateInPlace&&updateCompanyDetailOnly())return;
+  state.screen='accounts';
+  render();
 }
 function activeAccountList(){return filteredAccounts(state.companies,state.profiles,state.opportunities,state.tasks,state.filters);}
 function options(items,v,placeholder='전체'){
@@ -169,7 +208,7 @@ function renderAccounts(){
     <div class="table-scroll"><table class="table"><thead><tr><th>업체</th><th>등급·사업분류</th><th>현재 단계</th><th>다음 행동</th></tr></thead><tbody>
       ${list.map(c=>{
         const p=state.profiles[cid(c)]||{},n=nextActionFor(c,state.tasks),selected=state.selectedId===cid(c),contact=contactFor(c),activeCount=taskGroups(cid(c),state.tasks).active.length;
-        return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0" aria-label="${attr(c.name)} 업체 상세">
+        return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0" aria-current="${selected?'true':'false'}" aria-label="${attr(c.name)} 업체 상세">
           <td><div class="company-name">${esc(c.name||'업체명 없음')}</div><div class="tiny muted truncate">${esc(c.industry||c.bizDetail||c.region||'업종 미입력')}</div>
             ${state.canWrite?`<div class="crm-contact-brief"><span>고객 담당: ${esc(contact.person||'미등록')}</span><span>전화: ${contactDisplay(contact.phone,'phone')}</span><span>메일: ${contactDisplay(contact.email,'email')}</span></div>`:''}</td>
           <td>${tag(p.accountGrade||'미분류',(p.accountGrade||'').toLowerCase())}<div class="tiny muted" style="margin-top:5px">${esc(programCategories(p).slice(0,2).join(' · ')||'분류 미지정')}${programCategories(p).length>2?` 외 ${programCategories(p).length-2}개`:''}</div></td>
@@ -780,8 +819,12 @@ document.addEventListener('click',async e=>{
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
   try{
-    if(action==='select-company'||action==='go-company') {state.selectedId=id;state.companyTab='overview';state.screen='accounts';render();}
-    else if(action==='company-tab'){state.companyTab=a.dataset.tab;render();}
+    if(action==='select-company')selectCompany(id,true);
+    else if(action==='go-company')selectCompany(id,false);
+    else if(action==='company-tab'){
+      state.companyTab=a.dataset.tab;
+      if(!updateCompanyDetailOnly())render();
+    }
     else if(action==='open-import'){state.screen='import';render();}
     else if(action==='edit-profile')profileModal();
     else if(action==='edit-needs')needsModal();
@@ -826,7 +869,13 @@ document.addEventListener('change',async e=>{
     invalidateImportBackup();render();return;
   }
   const filters={'f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
-  if(filters[id]){state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;render();return;}
+  if(filters[id]){
+    state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;
+    render();
+    const list=$main.querySelector('.account-layout .table-scroll');
+    if(list)list.scrollTop=0; // Intentional: new filter results begin at first row.
+    return;
+  }
   if(id==='opp-filter'){state.oppFilter=e.target.value;render();}
   if(id==='activity-filter'){state.activityFilter=e.target.value;render();}
   if(id==='import-filter'){state.importFilter=e.target.value;render();}
@@ -842,11 +891,16 @@ document.addEventListener('input',e=>{
   }
   if(e.target.id!=='f-q')return;
   const input=e.target,pos=input.selectionStart;state.filters.q=input.value;
-  render();const next=$('f-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);
+  render();
+  const list=$main.querySelector('.account-layout .table-scroll');
+  if(list)list.scrollTop=0; // Intentional for a new search.
+  const next=$('f-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();document.querySelector('.sidebar').classList.remove('open');}
-  if(e.key==='Enter'&&e.target.matches('tr[data-action="select-company"]')){e.preventDefault();state.selectedId=e.target.dataset.id;render();}
+  if(e.key==='Enter'&&e.target.matches('tr[data-action="select-company"]')){
+    e.preventDefault();selectCompany(e.target.dataset.id,true);
+  }
 });
 $('refreshBtn').onclick=refresh;
 $('mobileMenu').onclick=()=>document.querySelector('.sidebar').classList.toggle('open');
