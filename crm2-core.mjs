@@ -264,6 +264,39 @@ export function groupStats(accounts,profiles,opps,tasks){
     openOpps:opps.filter(isOpportunityOpen).length,
     stalled:accounts.filter(c=>['모르겠음 — 담당자 확인','기록 없음 — 메일 확보 후 일괄'].includes(profiles[c._id]?.outreachBucket)).length};
 }
+export function isMeetingActivity(activity={}) {
+  return activity.meetingRecord===true ||
+    ['첫 미팅','현장 방문','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표'].includes(activity.type);
+}
+export function accountPriority(company,tasks=[],today) {
+  const next=nextActionFor(company,tasks);
+  if(!next)return 4;
+  if(!next.dueAt)return 3;
+  const key=String(next.dueAt).slice(0,10);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(key))return 3;
+  const current=today||(() => {
+    const n=new Date(),p=v=>String(v).padStart(2,'0');
+    return n.getFullYear()+'-'+p(n.getMonth()+1)+'-'+p(n.getDate());
+  })();
+  if(key<current)return 0;
+  if(key===current)return 1;
+  return 2;
+}
+export function searchAccounts(companies,profiles,opps,tasks,filters={},contacts={},allowContacts=false) {
+  const base=filteredAccounts(companies,profiles,opps,tasks,{...filters,q:''});
+  const q=textSearch(filters.q);
+  if(!q)return base;
+  return base.filter(company=>{
+    const id=company._id||company.id,p=profiles[id]||{},ct=allowContacts?(contacts[id]||{}):{};
+    const fields=[company.name,company.industry,company.bizDetail,company.needs,
+      company.owner,company.region,company.address,company.nextAction,
+      p.statusSummary,p.needsSummary,p.salesComment,p.contactReason,
+      programCategories(p).join(' ')];
+    if(allowContacts)fields.push(company.contactPerson,company.contactName,
+      ct.person,ct.name,ct.phone,ct.email);
+    return textSearch(fields.map(v=>String(v??'')).join(' ')).includes(q);
+  });
+}
 export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
   const q=textSearch(filters.q), grade=filters.grade||'', market=filters.market||'', group=filters.group||'';
   const stage=filters.stage||'';
@@ -277,6 +310,12 @@ export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
     if(q && !textSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,programCategories(p).join(' '),p.salesComment,p.contactReason,p.contactName].join(' ')).includes(q))return false;
     return true;
   }).sort((a,b)=>{
+    if(filters.sort==='priority') {
+      const delta=accountPriority(a,tasks)-accountPriority(b,tasks);
+      if(delta)return delta;
+      const grade=c=>({A:0,B:1,C:2}[profiles[c._id]?.accountGrade]??3);
+      return grade(a)-grade(b)||a.name.localeCompare(b.name,'ko');
+    }
     if(filters.sort==='grade') return (profiles[a._id]?.accountGrade||'Z').localeCompare(profiles[b._id]?.accountGrade||'Z')||a.name.localeCompare(b.name,'ko');
     if(filters.sort==='action') return (nextActionFor(a,tasks)?.dueAt||'9999').localeCompare(nextActionFor(b,tasks)?.dueAt||'9999')||a.name.localeCompare(b.name,'ko');
     if(filters.sort==='opportunities') return opps.filter(o=>o.companyId===b._id&&isOpportunityOpen(o)).length-opps.filter(o=>o.companyId===a._id&&isOpportunityOpen(o)).length||a.name.localeCompare(b.name,'ko');
