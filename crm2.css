@@ -108,3 +108,84 @@
   .crm-legacy-actions .btn{flex:1;text-align:center}
   .crm-legacy-block{padding:10px}
 }
+
+
+/* CRM 2.0 · meeting-first field workflow: compact lists and quick actions */
+.crm-stats-compact{gap:10px;margin-bottom:15px}
+.crm-stats-compact .stat{padding:14px 16px;border-radius:11px}
+.crm-stats-compact .stat-row{align-items:center}
+.crm-stats-compact .stat .number{font-size:23px;letter-spacing:-.8px;margin:5px 0 3px}
+.crm-stats-compact .stat-icon{width:28px;height:28px;font-size:15px}
+.crm-stats-compact .stat .foot{font-size:10px;line-height:1.35}
+.crm-account-toolbar{gap:8px;padding:12px 13px}
+.crm-account-toolbar #f-q{flex:1 1 100%;width:100%;max-width:none}
+.crm-account-toolbar select{flex:1 1 125px;max-width:230px}
+.crm-account-toolbar #f-sort{flex:1 1 150px}
+.crm-compact-checkbox{font-size:11px;font-weight:650;color:#5e6c83;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.crm-compact-checkbox input{accent-color:#4656c9}
+.crm-account-table{table-layout:fixed;width:100%}
+.crm-account-table th,.crm-account-table td{padding:11px 12px;vertical-align:top}
+.crm-account-table th:nth-child(1){width:48%}
+.crm-account-table th:nth-child(2){width:21%}
+.crm-account-table th:nth-child(3){width:31%}
+.crm-account-table .crm-account-name{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-bottom:3px}
+.crm-account-name .company-name{font-size:12.5px;line-height:1.3;overflow-wrap:anywhere}
+.crm-account-name .pill{font-size:9px;padding:3px 6px}
+.crm-account-subline{font-size:10.5px;color:#8996aa;line-height:1.4;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.crm-account-person{font-size:11px;color:#55667f;line-height:1.5;margin-top:4px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+.crm-account-contacts{display:flex;gap:2px 9px;flex-wrap:wrap;margin-top:3px;line-height:1.45}
+.crm-account-contacts>span{min-width:0;max-width:100%;font-size:10.5px;color:#647590;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crm-account-contacts a{color:#3f60c8;text-decoration:none;border-bottom:1px solid #d6e0f6}
+.crm-account-contacts a:hover{text-decoration:underline}
+.crm-account-table td:nth-child(2) .pill{white-space:normal;max-width:100%;font-size:10px}
+.crm-account-category{color:#8b97a9;font-size:10px;margin-top:7px;line-height:1.45;overflow-wrap:anywhere}
+.crm-account-action{font-size:11.5px;font-weight:650;line-height:1.5;color:#35455f;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.crm-account-deadline{font-size:10.5px;color:#8795aa;line-height:1.5;margin-top:5px}
+.crm-account-deadline.overdue{color:#b34242;font-weight:750}
+.crm-account-deadline.due-today{color:#966824;font-weight:750}
+.crm-detail-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.crm-detail-actions .btn{flex:1 1 118px;padding:9px 10px;min-height:36px;font-size:11.5px}
+.crm-meeting-overview{background:#fafbff;border:1px solid #e5eaf3;border-radius:10px;padding:12px;margin-top:15px}
+.crm-section-row{display:flex;align-items:center;justify-content:space-between;gap:9px;flex-wrap:wrap;margin-bottom:8px}
+.crm-section-row strong{color:#465773;font-size:12px}
+.crm-inline-link{border:0;background:transparent;color:#4e61bb;cursor:pointer;font-size:11px;font-weight:750;padding:5px}
+.crm-inline-link:hover{text-decoration:underline}
+.crm-meeting-preview-row{display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #eef1f8}
+.crm-meeting-preview-row span{color:#9aa7ba;font-size:10px;white-space:nowrap;flex:0 0 auto}
+.crm-meeting-preview-row strong{font-size:11px;color:#334562;line-height:1.5;overflow-wrap:anywhere}
+.crm-empty-preview{font-size:11px;color:#92a0b1;margin:6px 0 1px}
+.crm-notes-details{border:1px solid #e7ebf3;border-radius:9px;margin-top:13px;padding:9px 12px;background:#fbfcfe}
+.crm-notes-details summary{font-size:11px;font-weight:750;color:#536784;cursor:pointer}
+.crm-notes-details .insight{margin-top:9px}
+.crm-meeting-history{display:grid;gap:10px}
+.crm-meeting-entry{border:1px solid #e5eaf2;border-radius:10px;padding:12px 14px;background:#fff}
+.crm-meeting-entry-top{display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:6px;color:#8593a7;font-size:11px}
+.crm-meeting-entry>strong{display:block;font-size:12px;color:#2b3e5d;margin-bottom:5px}
+.crm-meeting-entry>p{font-size:12px;color:#5f6f8b;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere;margin:0}
+.crm-meeting-foot{margin-top:7px;font-size:10.5px;color:#8391a9;overflow-wrap:anywhere}
+.crm-meeting-table-summary{font-size:11px;color:#64748e;max-width:380px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.crm-meeting-table tr[data-action]{cursor:pointer}
+.crm-meeting-followup{border:1px solid #e5eaf4;background:#f8faff;border-radius:10px;padding:12px;display:grid;gap:10px}
+.crm-meeting-followup>strong{font-size:12px;color:#455673}
+.form .crm-inline-check{display:flex;align-items:center;gap:9px;font-size:11.5px;color:#435573;cursor:pointer;line-height:1.5}
+.form .crm-inline-check input{width:16px;height:16px;min-height:0;accent-color:#4b5ac9}
+.crm-meeting-form-note{font-size:11px;color:#7d8ba2;line-height:1.6}
+@media(max-width:1200px){
+ .crm-account-table th:nth-child(1){width:44%}
+ .crm-account-table th:nth-child(2){width:22%}
+ .crm-account-table th:nth-child(3){width:34%}
+}
+@media(max-width:780px){
+ .crm-stats-compact .stat{padding:11px 12px}
+ .crm-stats-compact .stat .number{font-size:21px}
+ .crm-account-toolbar select{flex:1 1 45%;max-width:none}
+}
+@media(max-width:520px){
+ .crm-account-table th:nth-child(1){width:59%}
+ .crm-account-table th:nth-child(3){width:41%}
+ .crm-account-table th:nth-child(2),.crm-account-table td:nth-child(2){display:none}
+ .crm-account-table th,.crm-account-table td{padding:10px 8px}
+ .crm-account-contacts>span{max-width:100%;font-size:10px}
+ .crm-detail-actions .btn{flex:1 1 100px}
+ .crm-meeting-preview-row{flex-direction:column;gap:2px}
+}
