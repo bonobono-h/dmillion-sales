@@ -240,6 +240,7 @@
 .timeline-detail-panel{position:sticky;top:86px;max-height:calc(100vh - 110px);overflow:auto}
 .timeline-toolbar #timeline-q{flex:1 1 100%;max-width:none}
 .timeline-toolbar select{flex:1 1 130px;max-width:210px}
+.timeline-toolbar .timeline-year-select{border-color:#9ca8ee;background:#f6f7ff;color:#3547b8;font-weight:800}
 .timeline-axis{display:grid;grid-template-columns:120px 1fr 120px;gap:12px;align-items:center;padding:10px 18px;border-bottom:1px solid #e9edf4;color:#8895a9;font-size:10px}
 .timeline-axis strong{text-align:center;color:#65738c;font-size:10px;letter-spacing:.6px}
 .timeline-axis span:last-child{text-align:right}
@@ -273,6 +274,7 @@
 .timeline-detail-section strong{font-size:12px;color:#3a4c68}
 .timeline-detail-section span{font-size:10px;color:#8a97aa}
 .timeline-stage-flow{display:grid;grid-template-columns:repeat(7,minmax(56px,1fr));gap:0;overflow-x:auto;padding:3px 0 10px}
+.timeline-stage-flow.planning{grid-template-columns:repeat(8,minmax(56px,1fr))}
 .timeline-stage{position:relative;display:grid;justify-items:center;align-content:start;gap:7px;min-width:58px;color:#a2abba;text-align:center}
 .timeline-stage:before{content:"";position:absolute;top:10px;left:0;width:100%;height:2px;background:#e4e8ef;z-index:0}
 .timeline-stage:first-child:before{left:50%;width:50%}
@@ -286,6 +288,9 @@
 .timeline-stage.current strong{color:#3547b8;font-weight:850}
 .timeline-terminal-note{margin-top:6px;padding:10px 12px;border-radius:9px;background:#fff7e9;color:#80622e;font-size:10.5px;line-height:1.5}
 .timeline-terminal-note.lost{background:#fff0f1;color:#934653}
+.timeline-year-editor{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,190px) auto;gap:10px;align-items:end;margin:0 0 16px;padding:13px;border:1px solid #dfe4fa;border-radius:11px;background:#f8f9ff}
+.timeline-year-editor>div{display:grid;gap:4px}.timeline-year-editor strong{font-size:11.5px;color:#3346b2}.timeline-year-editor small{font-size:9.5px;color:#7b88a2;line-height:1.45}
+.timeline-carry-note{margin:-4px 0 14px;padding:10px 12px;border-radius:9px;background:#fff7e9;color:#7b5c27;font-size:10.5px;line-height:1.5}
 .timeline-update-list{display:grid;gap:10px}
 .timeline-update{position:relative;border:1px solid #e5eaf2;border-radius:10px;padding:11px 12px 11px 15px;background:#fff}
 .timeline-update.latest{border-color:#bdc7ff;background:#f8f9ff;box-shadow:inset 3px 0 #5969d8}
@@ -309,5 +314,7 @@
  .timeline-detail-head{flex-direction:column}
  .timeline-detail-head .btn{width:100%}
  .timeline-stats{grid-template-columns:1fr 1fr}
+ .timeline-year-editor{grid-template-columns:1fr}
+ .timeline-year-editor .btn{width:100%}
 }
 

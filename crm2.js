@@ -4,7 +4,7 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
   buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261102-kind-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
-import {TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-kind-1';
+import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -69,7 +69,7 @@ const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
   screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
-  timeline:{q:'',kind:'customer',stage:'',status:'all',sort:'updated'},
+  timeline:{q:'',kind:'customer',year:'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
@@ -268,32 +268,38 @@ function recentLabel(days){
   return `${days}일 전 업데이트`;
 }
 function timelineEventLabel(kind){
-  return {activity:'활동',task:'업무',opportunity:'영업 기회',company:'업체 정보'}[kind]||'기록';
+  return {activity:'활동',task:'업무',opportunity:'영업 기회',company:'업체 정보',year_progress:'연도 진행'}[kind]||'기록';
 }
 function renderTimelineDetail(row){
   if(!row)return empty('업체를 선택해 주세요.','왼쪽 진행 현황에서 업체를 선택하면 단계와 업데이트 이력이 표시됩니다.');
-  const currentIndex=row.stageIndex;
+  const currentIndex=row.stageIndex,stageSteps=row.stageSteps||TIMELINE_STAGES;
   const events=row.events.slice(0,12);
   return `<div class="timeline-detail-head">
-      <div>${tag(companyKind(row.company),companyKind(row.company)==='협력사'?'warning':'outline')}${tag(row.stageLabel,timelineTone(row.stageKey))}<h2>${esc(row.company.name||'업체명 없음')}</h2><p>${esc(row.company.owner||'담당 미지정')} · ${recentLabel(row.recentDays)}</p></div>
+      <div>${tag(companyKind(row.company),companyKind(row.company)==='협력사'?'warning':'outline')}${row.carried?tag('2026 이월','warning'):''}${tag(row.stageLabel,timelineTone(row.stageKey))}<h2>${esc(row.company.name||'업체명 없음')}</h2><p>${esc(row.company.owner||'담당 미지정')} · ${row.planningYear&&!row.latestUpdate?'변경 이력 없음':recentLabel(row.recentDays)}</p></div>
       ${btn('go-company','업체 전체 상세','secondary',`data-id="${attr(row.id)}"`)}
     </div>
     <div class="timeline-summary-grid">
-      <div><span>영업 시작</span><strong>${row.startDay?asDate(row.startDay):'미정'}</strong></div>
+      <div><span>${row.planningYear?`${row.year} 시작`:'영업 시작'}</span><strong>${row.startDay?asDate(row.startDay):row.carried?'2026에서 이월':row.stageKey==='not_started'?'미진행':'미정'}</strong></div>
       <div><span>목표 종료</span><strong>${row.targetDay?asDate(row.targetDay):'미정'}</strong></div>
       <div><span>다음 행동</span><strong>${esc(row.next?.title||'등록 없음')}</strong></div>
       <div><span>다음 기한</span><strong>${row.nextDue?asDate(row.nextDue):'미정'}</strong></div>
     </div>
     <section class="timeline-stage-panel" aria-label="영업 진행 단계">
       <div class="timeline-detail-section"><strong>단계 진행</strong><span>현재 · ${esc(row.stageLabel)}</span></div>
-      <div class="timeline-stage-flow">${TIMELINE_STAGES.map(([key,label],index)=>{
+      ${row.planningYear?`<div class="timeline-year-editor">
+        <div><strong>${row.year}년 진행 단계 변경</strong><small>여기서 변경해도 2026 타임라인은 그대로 유지됩니다.</small></div>
+        <select id="timeline-progress-stage" class="select" aria-label="${row.year}년 진행 단계">${options(YEAR_TIMELINE_STAGES,row.stageKey,'단계 선택')}</select>
+        ${state.canWrite?btn('save-year-progress','단계 저장','primary',`data-id="${attr(row.id)}" data-year="${row.year}"`):'<span class="empty-inline">조회 권한</span>'}
+      </div>`:''}
+      ${row.carried?`<div class="timeline-carry-note">열린 영업기회·진행 중 업무·수행 과제가 있어 2026년 단계를 이월했습니다. 필요하면 위에서 직접 변경하세요.</div>`:''}
+      <div class="timeline-stage-flow ${row.planningYear?'planning':''}">${stageSteps.map(([key,label],index)=>{
         const cls=index<currentIndex?'done':index===currentIndex?'current':'future';
         return `<div class="timeline-stage ${cls}"><span>${index<currentIndex?'✓':index===currentIndex?'●':index+1}</span><strong>${esc(label)}</strong></div>`;
       }).join('')}</div>
       ${['hold','lost'].includes(row.stageKey)?`<div class="timeline-terminal-note ${row.stageKey}">${tag(row.stageLabel,timelineTone(row.stageKey))} 진행 사유와 재접촉 여부는 업체 상세에서 확인하세요.</div>`:''}
     </section>
     <section class="timeline-update-panel">
-      <div class="timeline-detail-section"><strong>최근 업데이트</strong><span>활동 ${row.activityCount}건 · 영업 기회 ${row.opportunityCount}건</span></div>
+      <div class="timeline-detail-section"><strong>${row.planningYear?`${row.year} 변경 이력`:'최근 업데이트'}</strong><span>${row.planningYear?`단계 변경 ${events.length}건`:`활동 ${row.activityCount}건 · 영업 기회 ${row.opportunityCount}건`}</span></div>
       <div class="timeline-update-list">${events.map((event,index)=>`<article class="timeline-update ${index===0?'latest':''}">
         <div class="timeline-update-date"><span>${esc(event.date)}</span>${tag(timelineEventLabel(event.kind),'outline')}</div>
         <strong>${esc(event.title)}</strong>
@@ -303,28 +309,29 @@ function renderTimelineDetail(row){
     </section>`;
 }
 function renderTimeline(){
-  const today=localToday(),filters=state.timeline;
-  const rows=buildTimelineRows(state.companies,state.activities,state.opportunities,state.tasks,{today});
+  const today=localToday(),filters=state.timeline,year=Number(filters.year)||2026;
+  const rows=buildTimelineRows(state.companies,state.activities,state.opportunities,state.tasks,{today,year,profiles:state.profiles,projects:state.projects});
   const scoped=filterTimelineRows(rows,{...filters,q:'',stage:'',status:'all',sort:'updated'});
   const filtered=filterTimelineRows(rows,filters);
   const selected=filtered.find(row=>row.id===state.selectedId)||filtered[0]||null;
-  const scale=timelineScale(filtered,today);
+  const scale=timelineScale(filtered,today,year===2026?null:year);
   const recent=scoped.filter(row=>row.recentDays!==null&&row.recentDays>=0&&row.recentDays<=7).length;
   const overdue=scoped.filter(row=>row.overdue>0).length;
-  const active=scoped.filter(row=>!['won','lost','hold'].includes(row.stageKey)).length;
-  const stages=[...TIMELINE_STAGES,['hold','보류'],['lost','실패']];
-  return `${heading('업체별 영업 진행 타임라인','시작부터 현재 단계, 최근 업데이트와 다음 행동까지 한 화면에서 확인합니다.',btn('new-meeting','＋ 새 활동 기록','primary'))}
+  const active=scoped.filter(row=>year===2026?!['won','lost','hold'].includes(row.stageKey):row.stageKey!=='not_started').length;
+  const stages=year===2026?[...TIMELINE_STAGES,['hold','보류'],['lost','실패']]:YEAR_TIMELINE_STAGES;
+  return `${heading('업체별 영업 진행 타임라인',year===2026?'2026년까지의 기존 이력은 그대로 보존됩니다.':'2027년은 미진행으로 새로 시작하고, 현재 진행 건만 2026 단계에서 이월합니다.',btn('new-meeting','＋ 새 활동 기록','primary'))}
     <div class="stats crm-stats-compact timeline-stats">
-      ${stat('진행 업체',active+'곳','수주·실패·보류 제외','━')}
+      ${stat('진행 업체',active+'곳',year===2026?'수주·실패·보류 제외':'미진행 제외 · 이월 포함','━')}
       ${stat('최근 업데이트',recent+'곳','최근 7일 이내','↻')}
       ${stat('기한 초과',overdue+'곳','미완료 후속 업무','!')}
       ${stat('목표일 등록',scoped.filter(row=>row.targetDay).length+'곳','영업 기회 예상 계약일','◷')}
     </div>
     <div class="timeline-layout">
       <section class="panel timeline-list-panel">
-        <div class="panel-head"><div><h2 class="panel-title">업체별 진행 현황</h2><p class="panel-subtitle">${filtered.length}곳 · ${today} 기준 · 최근 업데이트순</p></div></div>
+        <div class="panel-head"><div><h2 class="panel-title">${year}년 업체별 진행 현황</h2><p class="panel-subtitle">${filtered.length}곳 · ${year===2026?today+' 기준':'연도별 독립 관리'} · 최근 업데이트순</p></div></div>
         <div class="toolbar timeline-toolbar">
           <input id="timeline-q" class="field search-input" placeholder="업체명 · 담당자 · 최근 업데이트 · 다음 행동 검색" value="${attr(filters.q)}" aria-label="진행 타임라인 검색">
+          <select id="timeline-year" class="select timeline-year-select" aria-label="기준 연도">${options([['2026','2026년 기존 이력'],['2027','2027년 새 진행']],filters.year,'기준 연도')}</select>
           <select id="timeline-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],filters.kind,'대상 선택')}</select>
           <select id="timeline-stage" class="select" aria-label="현재 단계">${options(stages,filters.stage,'단계 전체')}</select>
           <select id="timeline-status" class="select" aria-label="진행 상태">${options([['all','전체 업체'],['recent','최근 7일 업데이트'],['overdue','기한 초과'],['active','진행 중']],filters.status,'상태')}</select>
@@ -335,16 +342,16 @@ function renderTimeline(){
           const pos=scale.position(row),selectedRow=selected?.id===row.id;
           return `<button type="button" class="timeline-row ${selectedRow?'selected':''}" data-action="select-timeline" data-id="${attr(row.id)}" aria-pressed="${selectedRow}">
             <div class="timeline-company"><div><strong>${esc(row.company.name||'업체명 없음')}</strong><span class="timeline-kind">${esc(companyKind(row.company))}</span>${row.recentDays!==null&&row.recentDays<=7?'<span class="timeline-new">최근 업데이트</span>':''}</div><span>${esc(row.company.owner||'담당 미지정')} · ${esc(row.stageLabel)}</span></div>
-            <div class="timeline-dates"><span>${row.startDay?esc(row.startDay):'시작 미정'}</span><span>${row.targetDay?'목표 '+esc(row.targetDay):'목표 종료 미정'}</span></div>
+            <div class="timeline-dates"><span>${row.startDay?esc(row.startDay):row.carried?'2026 이월':row.planningYear&&row.stageKey==='not_started'?'미진행':'시작 미정'}</span><span>${row.targetDay?'목표 '+esc(row.targetDay):'목표 종료 미정'}</span></div>
             <div class="timeline-track" title="${attr(row.startDay||'시작 미정')} ~ ${attr(row.targetDay||'진행 중')}">
               ${row.startDay?`<span class="timeline-track-bar ${row.targetDay?'targeted':'ongoing'}" style="left:${pos.left.toFixed(2)}%;width:${pos.width.toFixed(2)}%"></span>`:''}
-              <span class="timeline-track-stage" style="left:${Math.max(2,Math.min(96,(Math.max(0,row.stageIndex)+1)/TIMELINE_STAGES.length*100)).toFixed(2)}%"></span>
+              <span class="timeline-track-stage" style="left:${(2+Math.max(0,row.stageIndex)/Math.max(1,(row.stageSteps?.length||TIMELINE_STAGES.length)-1)*94).toFixed(2)}%"></span>
             </div>
-            <div class="timeline-row-update"><span>${recentLabel(row.recentDays)}</span><strong>${esc(row.latestUpdate?.title||'업데이트 기록 없음')}</strong></div>
+            <div class="timeline-row-update"><span>${row.planningYear&&!row.latestUpdate?(row.carried?'2026 진행 건 이월':'2027 변경 없음'):recentLabel(row.recentDays)}</span><strong>${esc(row.latestUpdate?.title||(row.carried?'현재 단계 유지':'미진행'))}</strong></div>
             <div class="timeline-row-next"><span>${row.overdue?`기한 초과 ${row.overdue}건`:row.nextDue?`다음 기한 ${row.nextDue}`:'다음 기한 미정'}</span><strong>${esc(row.next?.title||'후속 업무 없음')}</strong></div>
           </button>`;
         }).join('')||empty('조건에 맞는 업체가 없습니다.','검색어나 단계·상태 필터를 변경하세요.')}</div>
-        <div class="sort-note">실선 막대는 목표일이 있는 진행 기간, 점선 막대는 목표 종료일이 아직 없는 진행 기간입니다. 날짜는 기존 기록만 사용합니다.</div>
+        <div class="sort-note">${year===2026?'실선 막대는 목표일이 있는 진행 기간, 점선 막대는 목표 종료일이 아직 없는 진행 기간입니다. 날짜는 기존 기록만 사용합니다.':'2027 진행 단계는 업체별로 독립 저장됩니다. 2026 이력과 원래 업체 단계는 변경하지 않습니다.'}</div>
       </section>
       <aside class="panel timeline-detail-panel"><div class="panel-body">${renderTimelineDetail(selected)}</div></aside>
     </div>`;
@@ -785,6 +792,22 @@ function profileModal(){
       state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
     });
 }
+async function saveYearProgress(companyId,year,stage){
+  if(!state.canWrite)throw new Error('진행 단계 수정 권한이 없습니다.');
+  if(Number(year)===2026)throw new Error('2026 타임라인은 기존 이력 보존을 위해 수정할 수 없습니다.');
+  if(!YEAR_TIMELINE_STAGES.some(([key])=>key===stage))throw new Error('변경할 진행 단계를 선택해 주세요.');
+  const company=cc(companyId);if(!company)throw new Error('업체 정보를 찾을 수 없습니다.');
+  const profile=state.profiles[companyId]||{},key=String(year),previous=profile.yearProgress?.[key]||{};
+  if(previous.stage===stage){toast(`${year}년 진행 단계가 이미 ${Object.fromEntries(YEAR_TIMELINE_STAGES)[stage]}입니다.`);return;}
+  const now=new Date().toISOString();
+  const history=[...(Array.isArray(previous.history)?previous.history:[]),{id:uid(),stage,at:now,by:state.userId||null}].slice(-50);
+  const record={...previous,stage,startedAt:stage==='not_started'?null:(previous.startedAt||null),updatedAt:now,history};
+  const patch={yearProgress:{...(profile.yearProgress||{}),[key]:record},updatedAt:now};
+  await saveDoc('crm2Profiles',companyId,patch,!!profile._id);
+  state.profiles[companyId]={...profile,...patch,_id:companyId};
+  state.selectedId=companyId;render();
+  toast(`${company.name}의 ${year}년 진행 단계를 ${Object.fromEntries(YEAR_TIMELINE_STAGES)[stage]}으로 변경했습니다.`);
+}
 function updateNeedsPreview(){
   const target=$('crm2NeedsPreview'),raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
   if(!target||!raw||!summary)return;
@@ -1149,7 +1172,7 @@ function applyImportSession(){
       state.profiles[id]={...profileFromRow(item.row),_id:id};
     }
   }
-  state.importSessionApplied=true;state.filters={q:'',grade:'',market:'',group:'',stage:'',sort:'name',hasTask:false};state.selectedId=state.companies.find(x=>x._id?.startsWith('local-import-'))?._id||state.selectedId;
+  state.importSessionApplied=true;state.filters={q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'name',hasTask:false};state.selectedId=state.companies.find(x=>x._id?.startsWith('local-import-'))?._id||state.selectedId;
   state.companyTab='overview';state.screen='accounts';render();toast(`브라우저에 임시 적용했습니다. 신규 ${added}곳 · 서버 DB 변경 없음.`);
 }
 
@@ -1177,6 +1200,10 @@ document.addEventListener('click',async e=>{
     }
     else if(action==='open-import'){state.screen='import';render();}
     else if(action==='edit-profile')profileModal();
+    else if(action==='save-year-progress'){
+      const stage=safeText($('timeline-progress-stage')?.value);
+      await saveYearProgress(id,Number(a.dataset.year),stage);
+    }
     else if(action==='edit-needs')needsModal();
     else if(action==='format-needs'){
       const raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
@@ -1215,6 +1242,7 @@ document.addEventListener('change',async e=>{
   }
   if(id.startsWith('timeline-')){
     const key=id.slice('timeline-'.length);
+    if(key==='year'){state.timeline.year=e.target.value;state.timeline.stage='';state.timeline.status='all';render();return;}
     if(['kind','stage','status','sort'].includes(key)){state.timeline[key]=e.target.value;render();return;}
   }
   if(e.target.matches('[data-import-index]')){

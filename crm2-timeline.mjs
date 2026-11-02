@@ -9,6 +9,7 @@ export const TIMELINE_STAGES = [
   ['negotiation','협상'],
   ['won','수주']
 ];
+export const YEAR_TIMELINE_STAGES = [['not_started','미진행'],...TIMELINE_STAGES];
 
 const DAY_MS=86400000;
 
@@ -50,6 +51,21 @@ function currentStage(company,opportunities){
   return {key,label:key==='lost'?'실패':key==='hold'?'보류':Object.fromEntries(TIMELINE_STAGES)[key],opportunity:null};
 }
 
+function isProjectOpen(project={}){
+  const status=safeText(project.status||project.stage).toLocaleLowerCase('ko');
+  if(!status)return false;
+  return !['완료','종료','취소','중단','미선정','실패','closed','done','completed','cancelled','canceled','lost'].some(word=>status.includes(word));
+}
+function projectBelongsTo(project,id){
+  return project.companyId===id||(Array.isArray(project.companyIds)&&project.companyIds.includes(id));
+}
+function yearProgressEvent(row,year){
+  const date=timelineDay(row.at||row.updatedAt||row.createdAt);
+  if(!date)return null;
+  const label=Object.fromEntries(YEAR_TIMELINE_STAGES)[row.stage]||row.stage||'단계 미정';
+  return {date,kind:'year_progress',title:`${year}년 진행 단계 · ${label}`,detail:row.note||'',status:'단계 변경',id:row.id||`${date}-${row.stage}`};
+}
+
 function activityEvent(row){
   const date=timelineDay(activityDate(row));
   if(!date)return null;
@@ -69,6 +85,10 @@ function opportunityEvent(row){
 
 export function buildTimelineRows(companies=[],activities=[],opportunities=[],tasks=[],options={}){
   const today=options.today||timelineDay(new Date())||'';
+  const year=Number(options.year)||2026;
+  const planningYear=year!==2026;
+  const profiles=options.profiles||{};
+  const projects=options.projects||[];
   return companies.map(company=>{
     const id=company._id||company.id;
     const acts=activities.filter(row=>row.companyId===id);
@@ -77,6 +97,31 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     const visibleTasks=relatedTasks.filter(row=>!['cancelled','deleted'].includes(row.status));
     const activeTasks=relatedTasks.filter(row=>!['done','cancelled','deleted'].includes(row.status));
     const stage=currentStage(company,opps);
+    const activeProjects=projects.filter(row=>projectBelongsTo(row,id)&&isProjectOpen(row));
+    const progress=profiles[id]?.yearProgress?.[String(year)]||null;
+    if(planningYear){
+      const allowed=new Set(YEAR_TIMELINE_STAGES.map(([key])=>key));
+      const carried=!progress&&(opps.some(isOpportunityOpen)||activeTasks.length>0||activeProjects.length>0);
+      const stageKey=allowed.has(progress?.stage)?progress.stage:(carried&&allowed.has(stage.key)?stage.key:'not_started');
+      const stageLabel=Object.fromEntries(YEAR_TIMELINE_STAGES)[stageKey]||'미진행';
+      const history=Array.isArray(progress?.history)?progress.history:[];
+      const events=history.map(row=>yearProgressEvent(row,year)).filter(Boolean).sort((a,b)=>compareDate(b.date,a.date));
+      const latestUpdate=events[0]||null;
+      const startDay=timelineDay(progress?.startedAt);
+      const next=stageKey==='not_started'?null:nextActionFor(company,tasks);
+      const nextDue=timelineDay(next?.dueAt);
+      const recentDays=latestUpdate?.date&&today?daysBetween(latestUpdate.date,today):null;
+      const overdue=activeTasks.filter(row=>{
+        const due=timelineDay(row.dueAt);return due?.startsWith(String(year)+'-')&&today&&due<today;
+      }).length;
+      return {
+        id,company,year,planningYear:true,carried,progress,stageKey,stageLabel,
+        stageIndex:YEAR_TIMELINE_STAGES.findIndex(([key])=>key===stageKey),stageSteps:YEAR_TIMELINE_STAGES,
+        opportunity:stage.opportunity,startDay,targetDay:timelineDay(progress?.targetDay),next,nextDue,latestUpdate,recentDays,overdue,
+        activeTasks,activeProjects,events,activityCount:0,opportunityCount:0,
+        elapsedDays:startDay?Math.max(0,daysBetween(startDay,`${year}-12-31`)):null
+      };
+    }
     const companyUpdated=timelineDay(company.updatedAt||company.createdAt);
     const companyEvent=companyUpdated?{date:companyUpdated,kind:'company',title:'업체 정보 업데이트',detail:'',status:'업데이트',id}:null;
     const events=[...acts.map(activityEvent),...visibleTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent].filter(Boolean)
@@ -94,7 +139,7 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     }).length;
     const mainIndex=TIMELINE_STAGES.findIndex(([key])=>key===stage.key);
     return {
-      id,company,stageKey:stage.key,stageLabel:stage.label||safeText(company.stage)||'단계 미정',stageIndex:mainIndex,
+      id,company,year,planningYear:false,carried:false,progress:null,stageKey:stage.key,stageLabel:stage.label||safeText(company.stage)||'단계 미정',stageIndex:mainIndex,stageSteps:TIMELINE_STAGES,
       opportunity:stage.opportunity,startDay,targetDay,next,nextDue,latestUpdate,recentDays,overdue,
       activeTasks,events,activityCount:acts.length,opportunityCount:opps.length,
       elapsedDays:startDay&&today?Math.max(0,daysBetween(startDay,today)):null
@@ -109,9 +154,9 @@ export function filterTimelineRows(rows=[],filters={}){
     if(filters.stage&&row.stageKey!==filters.stage)return false;
     if(filters.status==='recent'&&!(row.recentDays!==null&&row.recentDays>=0&&row.recentDays<=7))return false;
     if(filters.status==='overdue'&&!row.overdue)return false;
-    if(filters.status==='active'&&['won','lost','hold'].includes(row.stageKey))return false;
+    if(filters.status==='active'&&(row.planningYear?row.stageKey==='not_started':['won','lost','hold'].includes(row.stageKey)))return false;
     if(q){
-      const hay=[row.company.name,row.company.owner,row.stageLabel,row.latestUpdate?.title,row.next?.title].join(' ').toLocaleLowerCase('ko');
+      const hay=[row.company.name,row.company.owner,row.stageLabel,row.latestUpdate?.title,row.next?.title,row.carried?'이월 진행':''].join(' ').toLocaleLowerCase('ko');
       if(!hay.includes(q))return false;
     }
     return true;
@@ -119,12 +164,23 @@ export function filterTimelineRows(rows=[],filters={}){
     if(filters.sort==='attention')return b.overdue-a.overdue||compareDate(a.nextDue||'9999',b.nextDue||'9999')||compareDate(b.latestUpdate?.date,a.latestUpdate?.date);
     if(filters.sort==='target')return compareDate(a.targetDay||a.nextDue||'9999',b.targetDay||b.nextDue||'9999')||compareDate(b.latestUpdate?.date,a.latestUpdate?.date);
     if(filters.sort==='name')return safeText(a.company.name).localeCompare(safeText(b.company.name),'ko');
-    return compareDate(b.latestUpdate?.date,a.latestUpdate?.date)||safeText(a.company.name).localeCompare(safeText(b.company.name),'ko');
+    return compareDate(b.latestUpdate?.date,a.latestUpdate?.date)||Number(b.stageKey!=='not_started')-Number(a.stageKey!=='not_started')||Number(b.carried)-Number(a.carried)||safeText(a.company.name).localeCompare(safeText(b.company.name),'ko');
   });
 }
 
-export function timelineScale(rows=[],today){
+export function timelineScale(rows=[],today,year=null){
   const current=timelineDay(today)||timelineDay(new Date());
+  if(year){
+    const start=`${year}-01-01`,end=`${year}-12-31`,span=Math.max(1,daysBetween(start,end));
+    const pct=value=>Math.max(0,Math.min(100,(daysBetween(start,value)/span)*100));
+    return {start,end,position(row){
+      if(!row.startDay)return {left:0,width:0};
+      const withinYear=current>=start&&current<=end?current:row.startDay;
+      const rowEnd=row.targetDay||withinYear||row.startDay;
+      const left=pct(row.startDay),right=Math.max(left,pct(rowEnd));
+      return {left,width:Math.max(1.5,right-left)};
+    }};
+  }
   const starts=rows.map(row=>row.startDay).filter(Boolean);
   const ends=rows.map(row=>row.targetDay||current).filter(Boolean);
   const start=starts.sort(compareDate)[0]||current;

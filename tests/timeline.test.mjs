@@ -79,6 +79,36 @@ test('timeline defaults can scope customer and partner companies separately',()=
   assert.equal(filterTimelineRows(rows,{kind:'all'}).length,3);
 });
 
+test('2027 starts untouched companies at not started and carries only active work',()=>{
+  const rows=buildTimelineRows(
+    [...companies,{_id:'c3',name:'수행 과제 업체',stage:'제안',createdAt:'2026-10-02'}],
+    activities,opportunities,tasks,
+    {today:'2026-11-02',year:2027,projects:[{_id:'p1',companyIds:['c3'],status:'수행 중'}]}
+  );
+  assert.equal(rows.find(row=>row.id==='c1').carried,true);
+  assert.equal(rows.find(row=>row.id==='c1').stageKey,'qualification');
+  assert.equal(rows.find(row=>row.id==='c2').stageKey,'not_started');
+  assert.equal(rows.find(row=>row.id==='c3').carried,true);
+  assert.equal(rows.find(row=>row.id==='c3').stageKey,'proposal');
+});
+
+test('saved 2027 progress overrides carry rules without changing the 2026 timeline',()=>{
+  const profiles={c2:{yearProgress:{'2027':{stage:'meeting',history:[{id:'h1',stage:'meeting',at:'2026-11-02T09:00:00+09:00'}]}}}};
+  const [planned]=buildTimelineRows([companies[1]],[],[],[],{today:'2026-11-02',year:2027,profiles});
+  const [historical]=buildTimelineRows([companies[1]],[],[],[],{today:'2026-11-02',year:2026,profiles});
+  assert.equal(planned.stageKey,'meeting');
+  assert.equal(planned.events[0].title,'2027년 진행 단계 · 첫 미팅');
+  assert.equal(historical.stageKey,'hold');
+  assert.equal(historical.planningYear,false);
+});
+
+test('future-year scale stays inside the selected calendar year',()=>{
+  const rows=buildTimelineRows(companies,[],[],[],{today:'2026-11-02',year:2027});
+  const scale=timelineScale(rows,'2026-11-02',2027);
+  assert.equal(scale.start,'2027-01-01');
+  assert.equal(scale.end,'2027-12-31');
+});
+
 test('timeline scale positions recorded bars inside the shared range',()=>{
   const rows=buildTimelineRows(companies,activities,opportunities,tasks,{today:'2026-11-02'});
   const scale=timelineScale(rows,'2026-11-02');
