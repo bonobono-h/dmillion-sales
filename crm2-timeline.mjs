@@ -105,6 +105,7 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
 export function filterTimelineRows(rows=[],filters={}){
   const q=safeText(filters.q).toLocaleLowerCase('ko');
   return rows.filter(row=>{
+    if(filters.kind&&filters.kind!=='all'&&(filters.kind==='partner'?row.company.kind!=='협력사':row.company.kind==='협력사'))return false;
     if(filters.stage&&row.stageKey!==filters.stage)return false;
     if(filters.status==='recent'&&!(row.recentDays!==null&&row.recentDays>=0&&row.recentDays<=7))return false;
     if(filters.status==='overdue'&&!row.overdue)return false;

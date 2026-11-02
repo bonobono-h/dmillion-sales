@@ -69,6 +69,16 @@ test('filters expose recent, overdue, stage and search views',()=>{
   assert.deepEqual(filterTimelineRows(rows,{q:'재방문'}).map(x=>x.id),['c1']);
 });
 
+test('timeline defaults can scope customer and partner companies separately',()=>{
+  const rows=buildTimelineRows(
+    [...companies,{_id:'c3',name:'가상 협력사',kind:'협력사',stage:'리드',createdAt:'2026-10-02'}],
+    activities,opportunities,tasks,{today:'2026-11-02'}
+  );
+  assert.deepEqual(filterTimelineRows(rows,{kind:'customer',sort:'name'}).map(x=>x.id),['c1','c2']);
+  assert.deepEqual(filterTimelineRows(rows,{kind:'partner'}).map(x=>x.id),['c3']);
+  assert.equal(filterTimelineRows(rows,{kind:'all'}).length,3);
+});
+
 test('timeline scale positions recorded bars inside the shared range',()=>{
   const rows=buildTimelineRows(companies,activities,opportunities,tasks,{today:'2026-11-02'});
   const scale=timelineScale(rows,'2026-11-02');

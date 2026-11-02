@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildCoverage,filterCoverage,dayKey,businessGroup} from '../crm2-coverage.mjs';
+import {filteredAccounts} from '../crm2-core.mjs';
 
 const co={_id:'c1',name:'가상 고객',kind:'고객사',stage:'리드',owner:'영업팀'};
 const activity={_id:'a1',companyId:'c1',date:'2026-10-22',type:'현장 방문',status:'완료'};
@@ -65,6 +66,13 @@ test('filters, counts and company grouping keep partners separate',()=>{
   assert.equal(businessGroup({...co,stage:'계약'}),'delivery');
   assert.equal(businessGroup({...co,stage:'선정'}),'delivery');
   assert.equal(businessGroup({...co,stage:''}),'unknown');
+});
+
+test('account list can hide partners by default while retaining an explicit all view',()=>{
+  const companies=[co,{...co,_id:'c2',kind:'협력사',name:'가상 협력사'}];
+  assert.deepEqual(filteredAccounts(companies,{},[],[],{kind:'customer'}).map(x=>x._id),['c1']);
+  assert.deepEqual(filteredAccounts(companies,{},[],[],{kind:'partner'}).map(x=>x._id),['c2']);
+  assert.equal(filteredAccounts(companies,{},[],[],{kind:'all'}).length,2);
 });
 test('business dates use Seoul and source input remains unchanged',()=>{
   assert.equal(dayKey('2026-10-29T15:30:00Z'),'2026-10-30');

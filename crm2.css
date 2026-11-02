@@ -251,6 +251,7 @@
 .timeline-company>div{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .timeline-company strong{font-size:12.5px;color:#253550;line-height:1.35;overflow-wrap:anywhere}
 .timeline-company>span,.timeline-dates span,.timeline-row-update span,.timeline-row-next span{display:block;margin-top:5px;color:#8a97aa;font-size:10px;line-height:1.35}
+.timeline-kind{display:inline-flex;padding:3px 6px;border-radius:999px;background:#eef1f6;color:#66758d;font-size:9px;font-weight:800}
 .timeline-new{display:inline-flex!important;margin:0!important;padding:3px 6px;border-radius:999px;background:#e9f7ef;color:#167653!important;font-size:9px!important;font-weight:800}
 .timeline-dates span:first-child{margin-top:0;color:#62718a}
 .timeline-track{height:12px;border-radius:999px;background:repeating-linear-gradient(90deg,#edf1f7 0,#edf1f7 1px,transparent 1px,transparent 20%);position:relative;box-shadow:inset 0 0 0 1px #e7ebf3}
@@ -309,5 +310,4 @@
  .timeline-detail-head .btn{width:100%}
  .timeline-stats{grid-template-columns:1fr 1fr}
 }
-
 

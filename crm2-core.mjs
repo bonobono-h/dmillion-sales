@@ -302,6 +302,7 @@ export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
   const stage=filters.stage||'';
   return companies.filter(c=>{
     const p=profiles[c._id]||{};
+    if(filters.kind&&filters.kind!=='all'&&(filters.kind==='partner'?c.kind!=='협력사':c.kind==='협력사'))return false;
     if(grade && p.accountGrade!==grade) return false;
     if(market && !programCategories(p).includes(market)) return false;
     if(group && p.outreachBucket!==group) return false;

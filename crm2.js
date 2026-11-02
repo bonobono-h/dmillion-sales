@@ -1,10 +1,10 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261030-coverage-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261102-kind-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
-import {TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-timeline-2';
+import {TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-kind-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -69,9 +69,9 @@ const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
   screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
-  timeline:{q:'',stage:'',status:'all',sort:'updated'},
+  timeline:{q:'',kind:'customer',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
-  filters:{q:'',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
+  filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
   importSelected:new Set(),importNewIds:{},importTaskIds:{},
@@ -261,6 +261,7 @@ function renderCoverage(){
 function timelineTone(key){
   return key==='won'?'ok':key==='lost'?'bad':key==='hold'?'warning':'outline';
 }
+function companyKind(company){return company?.kind==='협력사'?'협력사':'고객사';}
 function recentLabel(days){
   if(days===null||days<0)return '업데이트 날짜 미정';
   if(days===0)return '오늘 업데이트';
@@ -274,7 +275,7 @@ function renderTimelineDetail(row){
   const currentIndex=row.stageIndex;
   const events=row.events.slice(0,12);
   return `<div class="timeline-detail-head">
-      <div>${tag(row.stageLabel,timelineTone(row.stageKey))}<h2>${esc(row.company.name||'업체명 없음')}</h2><p>${esc(row.company.owner||'담당 미지정')} · ${recentLabel(row.recentDays)}</p></div>
+      <div>${tag(companyKind(row.company),companyKind(row.company)==='협력사'?'warning':'outline')}${tag(row.stageLabel,timelineTone(row.stageKey))}<h2>${esc(row.company.name||'업체명 없음')}</h2><p>${esc(row.company.owner||'담당 미지정')} · ${recentLabel(row.recentDays)}</p></div>
       ${btn('go-company','업체 전체 상세','secondary',`data-id="${attr(row.id)}"`)}
     </div>
     <div class="timeline-summary-grid">
@@ -304,25 +305,27 @@ function renderTimelineDetail(row){
 function renderTimeline(){
   const today=localToday(),filters=state.timeline;
   const rows=buildTimelineRows(state.companies,state.activities,state.opportunities,state.tasks,{today});
+  const scoped=filterTimelineRows(rows,{...filters,q:'',stage:'',status:'all',sort:'updated'});
   const filtered=filterTimelineRows(rows,filters);
   const selected=filtered.find(row=>row.id===state.selectedId)||filtered[0]||null;
   const scale=timelineScale(filtered,today);
-  const recent=rows.filter(row=>row.recentDays!==null&&row.recentDays>=0&&row.recentDays<=7).length;
-  const overdue=rows.filter(row=>row.overdue>0).length;
-  const active=rows.filter(row=>!['won','lost','hold'].includes(row.stageKey)).length;
+  const recent=scoped.filter(row=>row.recentDays!==null&&row.recentDays>=0&&row.recentDays<=7).length;
+  const overdue=scoped.filter(row=>row.overdue>0).length;
+  const active=scoped.filter(row=>!['won','lost','hold'].includes(row.stageKey)).length;
   const stages=[...TIMELINE_STAGES,['hold','보류'],['lost','실패']];
   return `${heading('업체별 영업 진행 타임라인','시작부터 현재 단계, 최근 업데이트와 다음 행동까지 한 화면에서 확인합니다.',btn('new-meeting','＋ 새 활동 기록','primary'))}
     <div class="stats crm-stats-compact timeline-stats">
       ${stat('진행 업체',active+'곳','수주·실패·보류 제외','━')}
       ${stat('최근 업데이트',recent+'곳','최근 7일 이내','↻')}
       ${stat('기한 초과',overdue+'곳','미완료 후속 업무','!')}
-      ${stat('목표일 등록',rows.filter(row=>row.targetDay).length+'곳','영업 기회 예상 계약일','◷')}
+      ${stat('목표일 등록',scoped.filter(row=>row.targetDay).length+'곳','영업 기회 예상 계약일','◷')}
     </div>
     <div class="timeline-layout">
       <section class="panel timeline-list-panel">
         <div class="panel-head"><div><h2 class="panel-title">업체별 진행 현황</h2><p class="panel-subtitle">${filtered.length}곳 · ${today} 기준 · 최근 업데이트순</p></div></div>
         <div class="toolbar timeline-toolbar">
           <input id="timeline-q" class="field search-input" placeholder="업체명 · 담당자 · 최근 업데이트 · 다음 행동 검색" value="${attr(filters.q)}" aria-label="진행 타임라인 검색">
+          <select id="timeline-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],filters.kind,'대상 선택')}</select>
           <select id="timeline-stage" class="select" aria-label="현재 단계">${options(stages,filters.stage,'단계 전체')}</select>
           <select id="timeline-status" class="select" aria-label="진행 상태">${options([['all','전체 업체'],['recent','최근 7일 업데이트'],['overdue','기한 초과'],['active','진행 중']],filters.status,'상태')}</select>
           <select id="timeline-sort" class="select" aria-label="정렬">${options([['updated','최근 업데이트순'],['attention','확인 필요한 순'],['target','목표·기한순'],['name','업체명순']],filters.sort,'정렬')}</select>
@@ -331,7 +334,7 @@ function renderTimeline(){
         <div class="timeline-list-scroll">${filtered.map(row=>{
           const pos=scale.position(row),selectedRow=selected?.id===row.id;
           return `<button type="button" class="timeline-row ${selectedRow?'selected':''}" data-action="select-timeline" data-id="${attr(row.id)}" aria-pressed="${selectedRow}">
-            <div class="timeline-company"><div><strong>${esc(row.company.name||'업체명 없음')}</strong>${row.recentDays!==null&&row.recentDays<=7?'<span class="timeline-new">최근 업데이트</span>':''}</div><span>${esc(row.company.owner||'담당 미지정')} · ${esc(row.stageLabel)}</span></div>
+            <div class="timeline-company"><div><strong>${esc(row.company.name||'업체명 없음')}</strong><span class="timeline-kind">${esc(companyKind(row.company))}</span>${row.recentDays!==null&&row.recentDays<=7?'<span class="timeline-new">최근 업데이트</span>':''}</div><span>${esc(row.company.owner||'담당 미지정')} · ${esc(row.stageLabel)}</span></div>
             <div class="timeline-dates"><span>${row.startDay?esc(row.startDay):'시작 미정'}</span><span>${row.targetDay?'목표 '+esc(row.targetDay):'목표 종료 미정'}</span></div>
             <div class="timeline-track" title="${attr(row.startDay||'시작 미정')} ~ ${attr(row.targetDay||'진행 중')}">
               ${row.startDay?`<span class="timeline-track-bar ${row.targetDay?'targeted':'ongoing'}" style="left:${pos.left.toFixed(2)}%;width:${pos.width.toFixed(2)}%"></span>`:''}
@@ -348,14 +351,16 @@ function renderTimeline(){
 }
 
 function renderAccounts(){
-  const list=activeAccountList(),st=groupStats(state.companies,state.profiles,state.opportunities,state.tasks),
-    f=state.filters,today=localToday();
-  const overdue=state.companies.filter(c=>accountPriority(c,state.tasks,today)===0).length;
-  const todayDue=state.companies.filter(c=>accountPriority(c,state.tasks,today)===1).length;
+  const list=activeAccountList(),f=state.filters,today=localToday();
+  const scopedCompanies=state.companies.filter(c=>f.kind==='all'||(f.kind==='partner'?c.kind==='협력사':c.kind!=='협력사'));
+  const scopedIds=new Set(scopedCompanies.map(cid));
+  const st=groupStats(scopedCompanies,state.profiles,state.opportunities.filter(o=>scopedIds.has(o.companyId)),state.tasks);
+  const overdue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===0).length;
+  const todayDue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===1).length;
   return `${heading('고객사 중심 영업관리','담당자·미팅 이력·다음 행동을 한 화면에서 확인합니다.',
     `${state.canWrite?btn('new-meeting','＋ 미팅 이력','primary'):''}${state.canWrite?btn('new-task','＋ 후속 업무','secondary'):''}`)}
   <div class="stats crm-stats-compact">
-    ${stat('등록된 업체',st.total+'개','협력사 포함 전체','▦')}
+    ${stat('등록된 업체',st.total+'개',f.kind==='partner'?'협력사 기준':f.kind==='all'?'고객사·협력사 전체':'고객사 기준','▦')}
     ${stat('후속 업무 대상',st.follow+'개','기한 미정 포함','◷')}
     ${stat('오늘 · 기한 경과',(todayDue+overdue)+'개',`오늘 ${todayDue} · 경과 ${overdue}`,'!')}
     ${stat('진행 중 영업 기회',st.openOpps+'건','개별 등록 건만 집계','◇')}
@@ -366,6 +371,7 @@ function renderAccounts(){
         ${btn('open-import','⇩ 엑셀 비교','secondary')}</div>
       <div class="toolbar crm-account-toolbar">
         <input id="f-q" class="field search-input" placeholder="업체명 · 담당자 · 전화 · 이메일 · 니즈 검색" value="${attr(f.q)}" aria-label="업체 및 연락처 통합 검색">
+        <select id="f-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],f.kind,'대상 선택')}</select>
         <select id="f-sort" class="select" aria-label="정렬">${options([['priority','우선 연락순'],['action','다음 일정순'],['name','업체명순'],['grade','등급순'],['opportunities','영업 기회순']],f.sort,'정렬')}</select>
         <select id="f-grade" class="select" aria-label="고객사 등급">${options(['A','B','C'],f.grade,'등급 전체')}</select>
         <select id="f-market" class="select" aria-label="지원공고사업분류">${options(categoryChoices(),f.market,'사업분류 전체')}</select>
@@ -385,7 +391,7 @@ function renderAccounts(){
         return `<tr data-action="select-company" data-id="${attr(cid(c))}" class="${selected?'selected':''}" tabindex="0"
           aria-current="${selected?'true':'false'}" aria-label="${attr(c.name)} 업체 상세">
           <td>
-            <div class="crm-account-name"><strong class="company-name">${esc(c.name||'업체명 없음')}</strong>${tag(grade,grade.toLowerCase())}</div>
+            <div class="crm-account-name"><strong class="company-name">${esc(c.name||'업체명 없음')}</strong>${tag(companyKind(c),companyKind(c)==='협력사'?'warning':'outline')}${tag(grade,grade.toLowerCase())}</div>
             <div class="crm-account-subline">${esc(c.industry||c.bizDetail||'업종 미입력')}${c.region?' · '+esc(c.region):''}</div>
             ${state.canWrite?`<div class="crm-account-person" title="${attr(contact.person||'')}" >담당 · ${esc(contact.person||'미등록')}</div>
               <div class="crm-account-contacts">
@@ -734,9 +740,10 @@ function profileModal(){
   const p=state.profiles[cid(c)]||{};
   const field=(n,key,v='',opts={})=>`<label>${esc(n)}${opts.select?`<select name="${key}">${options(opts.select,plain(v),'선택 안 함')}</select>`:
     opts.textarea?`<textarea name="${key}" rows="${opts.rows||3}">${esc(v)}</textarea>`:`<input name="${key}" value="${attr(v)}">`}</label>`;
-  showModal(`${c.name} · 고객정보 정리`,'기존 업체 레코드를 건드리지 않고 crm2Profiles에 별도로 저장합니다.',
-    `<div class="form-row">${field('고객사 등급','accountGrade',p.accountGrade,{select:['A','B','C']})}
-      <div class="crm-category-helper">지원공고사업분류는 복수 선택할 수 있어요. 업체별로 체크된 항목만 저장됩니다.</div></div>
+  showModal(`${c.name} · 고객정보 정리`,'업체 구분은 기본정보에, 나머지 영업 분류는 CRM 프로필에 저장합니다.',
+    `<div class="form-row">${field('업체 구분','companyKind',companyKind(c),{select:[['고객사','고객사'],['협력사','협력사']]})}
+      ${field('고객사 등급','accountGrade',p.accountGrade,{select:['A','B','C']})}</div>
+    <div class="crm-category-helper">지원공고사업분류는 복수 선택할 수 있어요. 업체별로 체크된 항목만 저장됩니다.</div>
     <div class="crm-categories-box">
       <div class="crm-category-title">지원공고사업분류 <span class="muted tiny">현재 ${programCategories(p).length}개 선택</span></div>
       <div class="crm-category-grid" role="group" aria-label="지원공고사업분류 여러 개 선택">
@@ -754,6 +761,7 @@ function profileModal(){
     ${field('정체·드랍 사유','stallReason',p.stallReason,{textarea:true})}
     ${field('영업 메모','salesComment',p.salesComment,{textarea:true})}`,
     async fd=>{
+      const nextKind=safeText(fd.get('companyKind'))==='협력사'?'협력사':'고객사';
       const patch=Object.fromEntries(['accountGrade','outreachBucket','contactReason','statusSummary','stallReason','salesComment'].map(k=>[k,safeText(fd.get(k))]));
       const names=fd.getAll('programCategory').map(safeText).filter(Boolean);
       const extras=safeText(fd.get('newCategories')).split(/[,，;\n]/).map(safeText).filter(Boolean);
@@ -769,6 +777,10 @@ function profileModal(){
       patch.market2027=patch.programCategories[0]||''; // Legacy compatibility only.
       patch.updatedAt=new Date().toISOString();
       const exists=!!state.profiles[cid(c)]?._id;
+      if(nextKind!==companyKind(c)){
+        await saveDoc('companies',cid(c),{kind:nextKind,updatedAt:patch.updatedAt},true);
+        c.kind=nextKind;c.updatedAt=patch.updatedAt;
+      }
       await saveDoc('crm2Profiles',cid(c),patch,exists);
       state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
     });
@@ -1203,7 +1215,7 @@ document.addEventListener('change',async e=>{
   }
   if(id.startsWith('timeline-')){
     const key=id.slice('timeline-'.length);
-    if(['stage','status','sort'].includes(key)){state.timeline[key]=e.target.value;render();return;}
+    if(['kind','stage','status','sort'].includes(key)){state.timeline[key]=e.target.value;render();return;}
   }
   if(e.target.matches('[data-import-index]')){
     const index=Number(e.target.dataset.importIndex);
@@ -1217,7 +1229,7 @@ document.addEventListener('change',async e=>{
     state.importOptions[id==='import-replace-contacts'?'replaceContacts':'includeTasks']=e.target.checked;
     invalidateImportBackup();render();return;
   }
-  const filters={'f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
+  const filters={'f-kind':'kind','f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
   if(filters[id]){
     state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;
     render();
