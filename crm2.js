@@ -69,7 +69,7 @@ const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
   screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
-  timeline:{q:'',kind:'customer',year:'2026',stage:'',status:'all',sort:'updated'},
+  timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
@@ -1242,7 +1242,11 @@ document.addEventListener('change',async e=>{
   }
   if(id.startsWith('timeline-')){
     const key=id.slice('timeline-'.length);
-    if(key==='year'){state.timeline.year=e.target.value;state.timeline.stage='';state.timeline.status='all';render();return;}
+    if(key==='year'){
+      state.timeline.year=e.target.value;state.timeline.stage='';state.timeline.status='all';
+      const url=new URL(location.href);url.searchParams.set('year',state.timeline.year);history.replaceState(null,'',url);
+      render();return;
+    }
     if(['kind','stage','status','sort'].includes(key)){state.timeline[key]=e.target.value;render();return;}
   }
   if(e.target.matches('[data-import-index]')){
