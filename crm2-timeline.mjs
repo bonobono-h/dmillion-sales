@@ -74,11 +74,12 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     const acts=activities.filter(row=>row.companyId===id);
     const opps=opportunities.filter(row=>row.companyId===id);
     const relatedTasks=tasks.filter(row=>row.companyId===id);
+    const visibleTasks=relatedTasks.filter(row=>!['cancelled','deleted'].includes(row.status));
     const activeTasks=relatedTasks.filter(row=>!['done','cancelled','deleted'].includes(row.status));
     const stage=currentStage(company,opps);
     const companyUpdated=timelineDay(company.updatedAt||company.createdAt);
     const companyEvent=companyUpdated?{date:companyUpdated,kind:'company',title:'업체 정보 업데이트',detail:'',status:'업데이트',id}:null;
-    const events=[...acts.map(activityEvent),...relatedTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent].filter(Boolean)
+    const events=[...acts.map(activityEvent),...visibleTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent].filter(Boolean)
       .sort((a,b)=>compareDate(b.date,a.date));
     const datedActivities=acts.map(row=>timelineDay(activityDate(row))).filter(Boolean);
     const starts=[...datedActivities,timelineDay(company.createdAt),...opps.map(row=>timelineDay(row.createdAt)).filter(Boolean)].filter(Boolean).sort(compareDate);
@@ -140,4 +141,3 @@ export function timelineScale(rows=[],today){
     }
   };
 }
-

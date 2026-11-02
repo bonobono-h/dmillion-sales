@@ -46,6 +46,21 @@ test('latest update uses actual change timestamps, never future due or target da
   assert.equal(row.targetDay,'2027-01-20');
 });
 
+test('cancelled and deleted tasks stay out of the visible update history',()=>{
+  const row=buildTimelineRows(
+    [{_id:'c4',name:'업무 상태 검증',stage:'현장 방문',createdAt:'2026-10-01'}],
+    [],
+    [],
+    [
+      {_id:'t4',companyId:'c4',title:'유효 업무',status:'todo',createdAt:'2026-11-02'},
+      {_id:'t5',companyId:'c4',title:'삭제 업무',status:'deleted',updatedAt:'2026-11-02'},
+      {_id:'t6',companyId:'c4',title:'취소 업무',status:'cancelled',updatedAt:'2026-11-02'}
+    ],
+    {today:'2026-11-02'}
+  )[0];
+  assert.deepEqual(row.events.filter(event=>event.kind==='task').map(event=>event.title),['유효 업무']);
+});
+
 test('filters expose recent, overdue, stage and search views',()=>{
   const rows=buildTimelineRows(companies,activities,opportunities,tasks,{today:'2026-11-02'});
   assert.deepEqual(filterTimelineRows(rows,{status:'recent'}).map(x=>x.id),['c1']);
@@ -68,4 +83,3 @@ test('Seoul business date conversion is stable',()=>{
   assert.equal(timelineDay('2026-10-29T15:30:00Z'),'2026-10-30');
   assert.equal(timelineDay('bad'),null);
 });
-
