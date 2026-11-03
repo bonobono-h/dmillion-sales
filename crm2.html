@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1730">
   <title>DMILLION CRM 2.0 · 업체 중심 영업관리</title>
-  <link rel="stylesheet" href="crm2.css?v=20261102-track-1">
+  <link rel="stylesheet" href="crm2.css?v=20261103-agent-3">
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
     window.CRM2_DEMO = demo;
@@ -18,7 +18,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261102-year-2');
+    await import('./crm2.js?v=20261103-agent-3');
   </script>
 </head>
 <body>
@@ -27,6 +27,7 @@
     <div class="brand"><span class="brand-mark">D</span><div><strong>DMILLION</strong><small>SALES INTELLIGENCE</small></div></div>
     <div class="side-section">CRM WORKSPACE</div>
     <nav id="sideNav" class="side-nav">
+      <button data-nav="agent" class="nav-link"><span class="nav-glyph">●</span> AI 영업 Agent <span class="nav-chevron">›</span></button>
       <button data-nav="coverage" class="nav-link active"><span class="nav-glyph">▤</span> 고객 관리 현황 <span class="nav-chevron">›</span></button>
       <button data-nav="timeline" class="nav-link"><span class="nav-glyph">━</span> 진행 타임라인 <span class="nav-chevron">›</span></button>
       <button data-nav="intake" class="nav-link"><span class="nav-glyph">⇩</span> 자료 업데이트 <span class="nav-chevron">›</span></button>
@@ -43,7 +44,7 @@
     </nav>
     <div class="sidebar-bottom">
       <div class="side-help">기존 시스템과 데이터를 공유하는 새로운 CRM 화면입니다. 운영 데이터를 자동으로 덮어쓰지 않습니다.</div>
-      <div class="version">CRM 2.0 · 시범 버전 0.6</div>
+      <div class="version">CRM 2.0 · 시범 버전 0.7</div>
     </div>
   </aside>
   <section class="workspace">

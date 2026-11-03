@@ -1,5 +1,16 @@
 # CRM 자료 업데이트
 
+## AI 영업 Agent 함수
+
+- `crm-agent-extract/index.ts`는 로그인된 `admin` 또는 `sales` 사용자만 호출할 수 있습니다.
+- 배포 시 `verify_jwt=false`를 사용하지만 함수 내부에서 Supabase Auth `/user`와 실제 `members.role`을 모두 확인합니다. 이는 최신 비대칭 사용자 토큰도 함수 코드에서 검증하기 위한 구성입니다.
+- Supabase Edge Function Secret에 `OPENAI_API_KEY`를 설정하면 OpenAI Responses API의 Structured Outputs로 초안을 만듭니다. 선택적으로 `OPENAI_MODEL`을 설정할 수 있으며 기본값은 `gpt-6-astra`입니다.
+- `SUPABASE_SECRET_KEYS`의 `default` 키를 우선 사용하고, 기존 프로젝트 호환을 위해 `SUPABASE_SERVICE_ROLE_KEY`를 대체 경로로만 지원합니다. 어느 키도 브라우저나 GitHub에 넣지 않습니다.
+- 입력 원문과 최대 5개 후보 업체명만 AI로 전달하며 `store:false`를 사용합니다. 고객 연락처와 전체 회사 목록은 전송하지 않습니다.
+- AI 키 미설정·일시 실패 시 `crm2-agent-core.mjs`의 기본 규칙 분석으로 전환합니다. 분석만으로 DB를 쓰지 않으며 최종 저장은 기존 `crm_intake_approve` 승인 함수가 담당합니다.
+
+배포 대상 파일: `backend/crm-agent-extract/index.ts`, `crm2-agent-core.mjs`.
+
 ## 운영 전제
 
 - 운영 적용 대상: 기존 `dmillion-sales` Supabase 프로젝트. 새 유료 프로젝트는 만들지 않습니다.
@@ -32,6 +43,6 @@
 
 ## 검증
 
-`node --test tests/coverage.test.mjs tests/intake.test.mjs`
+`node --test tests/*.test.mjs`
 
 운영 적용 뒤 RLS, RPC 중복 승인/원자성, 인증 없는 함수 호출 차단, 예약 작업 상태를 확인합니다. 테스트용 업체·자료는 트랜잭션 안에서만 생성하고 롤백합니다.

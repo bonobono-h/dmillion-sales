@@ -5,6 +5,7 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261103-agent-3';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -67,7 +68,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
@@ -80,7 +81,8 @@ const state={
   loading:false,connected:false,legacyImporting:false
 };
 const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
-const navNames={coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
+const agent=createSalesAgentUI({state,render,toast,reload:loadLive});
+const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -161,7 +163,7 @@ function render(){
   const timelineScroll=timelineList?timelineList.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
   $('crumb').textContent=navNames[state.screen]||state.screen;
-  const body={intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
+  const body={agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
@@ -1180,7 +1182,7 @@ function applyImportSession(){
 document.addEventListener('click',async e=>{
   const closer=e.target.closest('[data-close]');if(closer){closeModal();return;}
   const nav=e.target.closest('[data-nav]');
-  if(nav){state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
+  if(nav){if(state.screen==='agent'&&nav.dataset.nav!=='agent')agent.stop();state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
   if(e.target.closest('a[href^="tel:"], a[href^="mailto:"]'))return;
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
