@@ -364,3 +364,7 @@
 .company-detail-panel .panel-body{padding:26px 30px}
 .account-view-tabs{margin-bottom:20px}
 @media(max-width:650px){.company-detail-panel .panel-body{padding:18px}.company-detail-panel .detail-name{font-size:24px}.heading-actions{flex-wrap:wrap}}
+
+.timeline-layout{grid-template-columns:minmax(0,1fr)!important}
+.workspace-tabs{margin-bottom:20px}
+.company-detail-panel .timeline-stage-flow{overflow-x:auto}

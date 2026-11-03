@@ -1,12 +1,12 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-navigation-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-workspaces-2';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261103-navigation-1';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261103-workspaces-2';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -85,12 +85,18 @@ const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
 const agent=createSalesAgentUI({state,render,toast,reload:loadLive,newCompany:companyModal,openCompany:selectCompany});
 const DEFAULT_OWNERS=['김웅섭','윤홍렬','한인탁','박진우'];
 state.salesOwners=[];state.detailOpen=false;state.accountView='list';state.returnScreen='accounts';state.accountScroll=0;
-if(state.screen==='coverage'){state.screen='accounts';state.accountView='coverage';}
+if(['coverage','timeline','home'].includes(state.screen)){state.accountView=state.screen;state.screen='accounts';}
 function ownerChoices(){return [...new Set([...DEFAULT_OWNERS,...state.salesOwners.map(x=>x.name),...state.companies.map(x=>x.owner)].filter(Boolean))];}
 function ownerFields(value=''){return `<div class="form-row"><label>디밀리언 영업 담당자<select name="salesOwner">${options(ownerChoices(),value,'담당 미지정')}</select></label><label>새 담당자 추가<input name="newOwner" maxlength="40" placeholder="새 이름 입력 시 선택한 담당자 대신 지정"></label></div>`;}
 async function chosenOwner(fd){const extra=safeText(fd.get('newOwner'));if(extra.length>40)throw new Error('담당자 이름은 40자 이하로 입력해 주세요.');const name=extra||safeText(fd.get('salesOwner'));if(extra&&!ownerChoices().includes(extra)){const id=uid();await saveDoc('crm2Owners',id,{name:extra,createdAt:new Date().toISOString()});state.salesOwners.push({_id:id,name:extra});}return name;}
-function accountTabs(){return `<div class="filter-chips account-view-tabs" aria-label="고객 관리 보기">${[['list','업체 목록'],['coverage','관리 현황'],['home','오늘 할 일']].map(([key,label])=>`<button data-action="account-view" data-view="${key}" class="${state.accountView===key?'active':''}">${label}</button>`).join('')}</div>`;}
+function accountTabs(){return `<div class="filter-chips account-view-tabs" aria-label="고객 관리 보기">${[['list','업체 목록'],['timeline','진행 타임라인'],['coverage','관리 현황'],['home','오늘 할 일']].map(([key,label])=>`<button data-action="account-view" data-view="${key}" class="${state.accountView===key?'active':''}">${label}</button>`).join('')}</div>`;}
 const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'고객 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기'};
+function workspaceGroup(screen=state.screen){return ['agent','intake','import'].includes(screen)?'agent':['performance','manager'].includes(screen)?'performance':'accounts';}
+function workspaceTabs(){
+  const group=workspaceGroup();
+  const tabs=group==='agent'?[['agent','음성·텍스트 입력'],['intake','메일·자료 등록'],['import','엑셀 비교·가져오기']]:group==='performance'?[['performance','목표 대비 실적'],['manager','전체 분석']]:[];
+  return tabs.length?`<div class="filter-chips workspace-tabs" aria-label="메뉴 내 보기">${tabs.map(([screen,label])=>`<button data-action="workspace-view" data-screen="${screen}" class="${state.screen===screen?'active':''}">${label}</button>`).join('')}</div>`:'';
+}
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -168,14 +174,14 @@ function render(){
   // the account page must be re-rendered (e.g. a task was completed or edited).
   const accountList=state.screen==='accounts'?$main.querySelector('.account-layout .table-scroll'):null;
   const detailBody=state.screen==='accounts'?$main.querySelector('.account-layout .detail-scroll'):null;
-  const timelineList=state.screen==='timeline'?$main.querySelector('.timeline-list-scroll'):null;
+  const timelineList=state.screen==='timeline'||(state.screen==='accounts'&&state.accountView==='timeline')?$main.querySelector('.timeline-list-scroll'):null;
   const listScroll=accountList?{top:accountList.scrollTop,left:accountList.scrollLeft}:null;
   const detailScroll=detailBody?detailBody.scrollTop:null;
   const timelineScroll=timelineList?timelineList.scrollTop:null;
-  document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===(['accounts','coverage','home'].includes(state.screen)?'accounts':state.screen)));
-  $('crumb').textContent=navNames[state.screen]||state.screen;
+  document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===workspaceGroup()));
+  $('crumb').textContent={accounts:'고객 관리',agent:'영업 기록 입력',performance:'영업 실적'}[workspaceGroup()];
   const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
-  $main.innerHTML=body?body():renderAccounts();
+  $main.innerHTML=workspaceTabs()+(body?body():renderAccounts());
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
     if(next){next.scrollTop=listScroll.top;next.scrollLeft=listScroll.left;}
@@ -208,10 +214,10 @@ function updateCompanyDetailOnly(){
 }
 function selectCompany(id,updateInPlace=true){
   if(!cc(id))return;
-  if(!state.detailOpen){state.returnScreen=state.screen;state.accountScroll=$main.querySelector('.table-scroll')?.scrollTop||0;}
+  if(!state.detailOpen){state.returnScreen=state.screen;state.accountScroll=$main.querySelector('.timeline-list-scroll,.table-scroll')?.scrollTop||0;}
   state.detailOpen=true;
   state.selectedId=id;
-  state.companyTab='overview';
+  state.companyTab=state.accountView==='timeline'?'progress':'overview';
   state.screen='accounts';
   render();
   window.scrollTo({top:0});
@@ -291,7 +297,7 @@ function renderTimelineDetail(row){
   const events=row.events.slice(0,12);
   return `<div class="timeline-detail-head">
       <div>${tag(companyKind(row.company),companyKind(row.company)==='협력사'?'warning':'outline')}${row.carried?tag('2026 이월','warning'):''}${tag(row.stageLabel,timelineTone(row.stageKey))}<h2>${esc(row.company.name||'업체명 없음')}</h2><p>${esc(row.company.owner||'담당 미지정')} · ${row.planningYear&&!row.latestUpdate?'변경 이력 없음':recentLabel(row.recentDays)}</p></div>
-      ${btn('go-company','업체 전체 상세','secondary',`data-id="${attr(row.id)}"`)}
+      ${state.detailOpen?'':btn('go-company','업체 전체 상세','secondary',`data-id="${attr(row.id)}"`)}
     </div>
     <div class="timeline-summary-grid">
       <div><span>${row.planningYear?`${row.year} 시작`:'영업 시작'}</span><strong>${row.startDay?asDate(row.startDay):row.carried?'2026에서 이월':row.stageKey==='not_started'?'미진행':'미정'}</strong></div>
@@ -368,12 +374,13 @@ function renderTimeline(){
         }).join('')||empty('조건에 맞는 업체가 없습니다.','검색어나 단계·상태 필터를 변경하세요.')}</div>
         <div class="sort-note">${year===2026?'실선 막대는 목표일이 있는 진행 기간, 점선 막대는 목표 종료일이 아직 없는 진행 기간입니다. 날짜는 기존 기록만 사용합니다.':'2027 진행 단계는 업체별로 독립 저장됩니다. 2026 이력과 원래 업체 단계는 변경하지 않습니다.'}</div>
       </section>
-      <aside class="panel timeline-detail-panel"><div class="panel-body">${renderTimelineDetail(selected)}</div></aside>
+
     </div>`;
 }
 
 function renderAccounts(){
   if(state.detailOpen&&cc(state.selectedId))return `${heading(cc(state.selectedId).name,'업체 정보와 활동 이력을 넓게 확인합니다.',btn('back-accounts','← 이전 목록으로','secondary'))}<section class="panel company-detail-panel">${renderCompanyDetail()}</section>`;
+  if(state.accountView==='timeline')return accountTabs()+renderTimeline();
   if(state.accountView==='coverage')return accountTabs()+renderCoverage();
   if(state.accountView==='home')return accountTabs()+renderHome();
   const list=activeAccountList(),f=state.filters,today=localToday();
@@ -500,7 +507,7 @@ function meetingEntry(a){
     ${a.nextAction?`<div class="crm-meeting-foot">후속 조치 · ${esc(a.nextAction)} ${a.nextDue?'· '+esc(a.nextDue):''}</div>`:''}
   </article>`;
 }
-const detailTabs=[['overview','개요'],['activities','미팅 이력'],['opportunities','영업 기회'],['projects','수행 과제'],['documents','문서']];
+const detailTabs=[['overview','기본정보'],['progress','진행 현황'],['activities','활동 이력'],['opportunities','제안·견적'],['tasks','후속업무'],['projects','수행 과제'],['documents','문서']];
 function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
   const p=state.profiles[cid(c)]||{},opp=state.opportunities.filter(x=>x.companyId===cid(c)),
@@ -529,12 +536,7 @@ function renderCompanyDetail(){
       ${p.stallReason?`<div class="insight"><strong>정체·드랍 사유</strong><p>${esc(p.stallReason)}</p></div>`:''}
     </details>`:''}
     <div class="divider"></div>
-    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+legacyItems.length}항목</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
-    <div class="crm-task-list">${activeTasks.map((x,i)=>taskRow(x,'active',i)).join('')}</div>
-    ${renderLegacyActions(legacyItems)}
-    ${!activeTasks.length&&!legacyItems.length?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 업체별로 누적됩니다.'):''}
-    ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
-    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
+`;
   const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
@@ -542,25 +544,32 @@ function renderCompanyDetail(){
     <div class="divider"></div><div class="notice">전화번호·이메일은 기존 앱의 보호된 <b>data/contacts</b> 저장소에서 읽습니다. 최신 고객사 엑셀을 업로드하면 이 브라우저에서만 최신 값을 우선 표시하며, 확인 전에는 서버 정보를 덮어쓰지 않습니다.</div>
     <div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 시스템에서 연락처 수정 ↗</a></div>`;
   const opportunities=`<div class="section-label">진행 중 / 종료 영업 기회 · ${opp.length}건</div><div class="mini-list">${opp.map(o=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(o.title)}</h3>${tag(STAGE_LABEL[o.stage]||o.stage,'outline')}</div><p class="mini-desc">${esc(o.solution||o.solutionTags?.join(', ')||'분야 미입력')} · ${moneyKRW(o.estimatedAmount)} · ${esc(o.owner||'담당 미지정')}</p>
-    ${state.canWrite?`<div class="detail-actions">${btn('edit-opportunity','영업 기회 편집','secondary',`data-id="${attr(cid(o))}"`)}</div>`:''}</div>`).join('')||empty('등록된 영업 기회가 없습니다.','업체당 여러 제안을 별도 관리할 수 있습니다.')}</div>
-    <div class="detail-actions">${state.canWrite?btn('new-opportunity','＋ 영업 기회 추가','primary'):''}</div>`;
-  const activities=`<div class="crm-section-row"><strong>미팅 이력 · ${meetings.length}건</strong>
+    ${state.canWrite?`<div class="detail-actions">${btn('edit-opportunity','제안·견적 편집','secondary',`data-id="${attr(cid(o))}"`)}</div>`:''}</div>`).join('')||empty('등록된 영업 기회가 없습니다.','업체당 여러 제안을 별도 관리할 수 있습니다.')}</div>
+    <div class="detail-actions">${state.canWrite?btn('new-opportunity','＋ 제안·견적 추가','primary'):''}</div>`;
+  const activities=`<div class="crm-section-row"><strong>활동 이력 · ${acts.length}건</strong>
     ${state.canWrite?btn('new-meeting','＋ 미팅 이력 등록','primary'):''}</div>
     <div class="crm-meeting-history">
-      ${meetings.map(meetingEntry).join('')||empty('등록된 미팅 이력이 없습니다.','현장 방문이나 미팅 후 핵심 내용을 기록해보세요.')}
+      ${acts.map(meetingEntry).join('')||empty('등록된 미팅 이력이 없습니다.','현장 방문이나 미팅 후 핵심 내용을 기록해보세요.')}
     </div>
-    ${otherActivities.length?`<details class="crm-notes-details"><summary>기존 기타 활동 이력 ${otherActivities.length}건 보기</summary>
-      <div class="crm-meeting-history">${otherActivities.map(meetingEntry).join('')}</div></details>`:''}`;
+    `;
   const projectsHtml=`<div class="section-label">연계 사업·과제 · ${projects.length}건</div><div class="mini-list">${projects.map(r=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(r.name||r.title||'과제명 미입력')}</h3>${tag(r.status||r.stage||'진행정보 없음','outline')}</div><p class="mini-desc">${esc(r.programName||r.program||'')} ${r.deadline?'· '+asDate(r.deadline):''}</p></div>`).join('')||empty('등록된 연계 과제가 없습니다.')}</div><div class="notice" style="margin-top:15px">기존 <b>projects.companyIds</b>를 재사용합니다. 정부과제의 선정은 수주로 자동 집계하지 않습니다.</div><div class="detail-actions"><a class="btn secondary" href="index.html#proj">기존 과제 관리 열기 ↗</a></div>`;
   const documents=`<div class="section-label">견적·제안서·계약서</div><div class="callout"><h4>기존 문서함 연결</h4><p>파일 권한·원가 자료 보호를 유지하기 위해 문서를 새 화면으로 복사하지 않습니다. 기존 업체 상세의 '문서·구성표'에서 작업하세요.</p></div><div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 업체 문서함 열기 ↗</a></div>`;
-  const map={overview,people,opportunities,activities,projects:projectsHtml,documents};
+  const progressRow=buildTimelineRows([c],state.activities,state.opportunities,state.tasks,{today:localToday(),year:Number(state.timeline.year),profiles:state.profiles,projects:state.projects})[0];
+  const progress=`<label>기준 연도 <select id="detail-progress-year" class="select">${options([['2026','2026년 기존 이력'],['2027','2027년 새 진행']],state.timeline.year,'기준 연도')}</select></label>${renderTimelineDetail(progressRow)}`;
+  const tasks=`    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+legacyItems.length}항목</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
+    <div class="crm-task-list">${activeTasks.map((x,i)=>taskRow(x,'active',i)).join('')}</div>
+    ${renderLegacyActions(legacyItems)}
+    ${!activeTasks.length&&!legacyItems.length?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 업체별로 누적됩니다.'):''}
+    ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
+    ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
+  const map={overview,people,progress,tasks,opportunities,activities,projects:projectsHtml,documents};
   return `<div class="panel-body"><div class="detail-top"><div>${tag(p.accountGrade?`${p.accountGrade}등급`:'등급 미지정',(p.accountGrade||'').toLowerCase())}<h2 class="detail-name">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'산업 분류 없음')} · ${esc(c.region||p.region||'지역 미입력')}</p></div>${state.canWrite?`<button type="button" class="btn secondary" data-action="edit-profile">편집</button>`:''}</div>
     <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${programCategories(p).length?programCategories(p).map(name=>tag(name,'outline')).join(''):tag('미지정','outline')}${tag(c.stage||'단계 미입력','outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
     ${contactPanel(c)}
     ${state.canWrite?`<div class="crm-detail-actions">
       ${btn('new-meeting','＋ 미팅 이력','primary')}
       ${btn('new-task','＋ 후속 업무','secondary')}
-      ${btn('new-opportunity','＋ 영업 기회','secondary')}
+      ${btn('new-opportunity','＋ 제안·견적','secondary')}
     </div>`:''}
     <div class="divider"></div><div class="mini-list" style="grid-template-columns:repeat(3,1fr)"><div><strong>${opp.length}</strong><p class="tiny muted">영업 기회</p></div><div><strong>${meetings.length}</strong><p class="tiny muted">미팅 이력</p></div><div><strong>${projects.length}</strong><p class="tiny muted">연계 과제</p></div></div></div>
     <div class="tabs" role="tablist">${detailTabs.map(([k,v])=>`<button class="tab ${state.companyTab===k?'active':''}" role="tab" aria-selected="${state.companyTab===k}" data-action="company-tab" data-tab="${k}">${v}</button>`).join('')}</div>
@@ -588,7 +597,7 @@ function renderOpportunities(){
   const filtered=state.opportunities.filter(o=>state.oppFilter==='all'||(state.oppFilter==='open'&&isOpportunityOpen(o))||o.stage===state.oppFilter);
   const open=state.opportunities.filter(isOpportunityOpen),won=state.opportunities.filter(o=>o.stage==='won');
   const estimated=open.filter(o=>Number.isFinite(Number(o.estimatedAmount))).reduce((s,o)=>s+Number(o.estimatedAmount||0),0);
-  return `${heading('영업 기회 관리','한 업체의 여러 제안·견적·협상을 개별 건으로 추적합니다.',btn('new-opportunity','＋ 영업 기회 등록','primary'))}
+  return `${heading('영업 기회 관리','한 업체의 여러 제안·견적·협상을 개별 건으로 추적합니다.',btn('new-opportunity','＋ 제안·견적 등록','primary'))}
   <div class="stats">${stat('전체 영업 기회',state.opportunities.length+'건','수주·실패·보류 포함','◇')}${stat('진행 중',open.length+'건','종료되지 않은 기회','▤')}${stat('수주',won.length+'건','확정된 영업 건만','✓')}${stat('진행 기회 금액',moneyKRW(estimated),'금액이 입력된 건만 합산','₩')}</div>
   <section class="panel"><div class="panel-head"><h2 class="panel-title">영업 파이프라인</h2><span class="muted tiny">선정된 과제는 자동으로 수주 처리하지 않습니다.</span></div>
   <div class="toolbar"><select id="opp-filter" class="select" aria-label="영업 단계 필터">${options([['all','전체'],['open','진행 중'],...STAGES],state.oppFilter,'전체')}</select></div>
@@ -1046,7 +1055,7 @@ function meetingModal(){
       // The existing sales-management app uses the same activities collection.
       await saveDoc('activities',id,record);
       state.activities.push({_id:id,...record});
-      state.selectedId=companyId;state.companyTab='activities';state.screen='accounts';
+      state.returnScreen=state.screen;state.detailOpen=true;state.selectedId=companyId;state.companyTab='activities';state.screen='accounts';
       if(nextAction&&fd.get('createTask')==='on'){
         const exists=state.tasks.some(t=>t.companyId===companyId&&safeText(t.title)===nextAction&&
           !['done','cancelled','deleted'].includes(t.status));
@@ -1073,7 +1082,7 @@ function opportunityModal(id=null){
   const names=state.companies.filter(x=>x.kind!=='협력사').sort((a,b)=>a.name.localeCompare(b.name,'ko'));
   const selectedCo=current?.companyId||cid(c)||'';
   const selectedStage=current?.stage||'discovery';
-  showModal(current?'영업 기회 편집':'새 영업 기회','각 업체마다 제안·견적을 여러 건 등록할 수 있습니다.',
+  showModal(current?'제안·견적 편집':'새 영업 기회','각 업체마다 제안·견적을 여러 건 등록할 수 있습니다.',
     `<label>고객사 <select required name="companyId">${names.map(x=>`<option value="${attr(cid(x))}" ${selectedCo===cid(x)?'selected':''}>${esc(x.name)}</option>`).join('')}</select></label>
     <label>영업 기회명 <input required maxlength="120" name="title" value="${attr(current?.title||'')}" placeholder="예: 검사공정 비전 자동화"></label>
     <div class="form-row"><label>진행 단계 <select name="stage">${STAGES.map(([k,v])=>`<option value="${k}" ${selectedStage===k?'selected':''}>${v}</option>`).join('')}</select></label>
@@ -1322,12 +1331,13 @@ document.addEventListener('click',async e=>{
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
   try{
-    if(action==='account-view'){state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';render();}
-    else if(action==='back-accounts'){state.detailOpen=false;state.screen=state.returnScreen||'accounts';render();const list=$main.querySelector('.table-scroll');if(list)list.scrollTop=state.accountScroll;}
+    if(action==='workspace-view'){if(state.screen==='agent')agent.stop();state.screen=a.dataset.screen;state.detailOpen=false;render();if(state.screen==='intake'){await intake.load();render();}}
+    else if(action==='account-view'){state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';render();}
+    else if(action==='back-accounts'){state.detailOpen=false;state.screen=state.returnScreen||'accounts';render();const list=$main.querySelector('.timeline-list-scroll,.table-scroll');if(list)list.scrollTop=state.accountScroll;}
     else if(action==='new-company')companyModal();
     else if(action==='coverage-status'){state.coverage.status=a.dataset.status;render();}
     else if(action==='coverage-accounts'){state.detailOpen=false;state.accountView='list';state.screen='accounts';render();}
-    else if(action==='select-timeline'){state.selectedId=id;render();}
+    else if(action==='select-timeline'){selectCompany(id,false);state.companyTab='progress';updateCompanyDetailOnly();}
     else if(action==='select-company')selectCompany(id,true);
     else if(action==='go-company')selectCompany(id,false);
     else if(action==='show-meetings'){
@@ -1375,6 +1385,7 @@ document.addEventListener('click',async e=>{
 });
 document.addEventListener('change',async e=>{
   const id=e.target.id;
+  if(id==='detail-progress-year'){state.timeline.year=e.target.value;updateCompanyDetailOnly();return;}
   if(id.startsWith('coverage-')){
     const key=id.slice('coverage-'.length);
     if(['kind','owner','group','market','sort','threshold'].includes(key)){

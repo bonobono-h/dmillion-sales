@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=20261103-ios-1">
   <link rel="icon" type="image/svg+xml" href="icons/dmillion-app.svg?v=20261103-ios-1">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/dmillion-app-180.png?v=20261103-ios-1">
-  <link rel="stylesheet" href="crm2.css?v=20261103-navigation-1">
+  <link rel="stylesheet" href="crm2.css?v=20261103-workspaces-2">
   <script src="pwa.js?v=20261103-ios-1" defer></script>
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
@@ -27,7 +27,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261103-navigation-1');
+    await import('./crm2.js?v=20261103-workspaces-2');
   </script>
 </head>
 <body>
@@ -36,20 +36,12 @@
     <div class="brand"><span class="brand-mark">D</span><div><strong>DMILLION</strong><small>SALES INTELLIGENCE</small></div></div>
     <div class="side-section">CRM WORKSPACE</div>
     <nav id="sideNav" class="side-nav">
-      <button data-nav="agent" class="nav-link"><span class="nav-glyph">●</span> AI 영업 Agent <span class="nav-chevron">›</span></button>
-      <button data-nav="timeline" class="nav-link"><span class="nav-glyph">━</span> 진행 타임라인 <span class="nav-chevron">›</span></button>
-      <button data-nav="performance" class="nav-link"><span class="nav-glyph">◎</span> 영업 실적 <span class="nav-chevron">›</span></button>
-      <button data-nav="intake" class="nav-link"><span class="nav-glyph">⇩</span> 자료 업데이트 <span class="nav-chevron">›</span></button>
       <button data-nav="accounts" class="nav-link active"><span class="nav-glyph">▦</span> 고객 관리 <span class="nav-chevron">›</span></button>
-      <button data-nav="opportunities" class="nav-link"><span class="nav-glyph">◇</span> 영업 기회 <span class="nav-chevron">›</span></button>
-      <button data-nav="activities" class="nav-link"><span class="nav-glyph">☷</span> 미팅 이력 <span class="nav-chevron">›</span></button>
-      <button data-nav="manager" class="nav-link"><span class="nav-glyph">◫</span> 관리자 분석 <span class="nav-chevron">›</span></button>
+      <button data-nav="agent" class="nav-link"><span class="nav-glyph">●</span> 영업 기록 입력 <span class="nav-chevron">›</span></button>
+      <button data-nav="performance" class="nav-link"><span class="nav-glyph">◎</span> 영업 실적 <span class="nav-chevron">›</span></button>
     </nav>
-    <div class="side-section side-secondary">MANAGEMENT</div>
-    <nav class="side-nav">
-      <button data-nav="import" class="nav-link"><span class="nav-glyph">⇩</span> 엑셀 비교·가져오기</button>
-      <a class="nav-link" href="index.html"><span class="nav-glyph">↗</span> 기존 영업관리 열기</a>
-    </nav>
+    <div class="side-section side-secondary">REFERENCE</div>
+    <nav class="side-nav"><a class="nav-link" href="index.html"><span class="nav-glyph">↗</span> 기존 영업관리 열기</a></nav>
     <div class="sidebar-bottom">
       <div class="side-help">기존 시스템과 데이터를 공유하는 새로운 CRM 화면입니다. 운영 데이터를 자동으로 덮어쓰지 않습니다.</div>
       <div class="version">CRM 2.0 · 시범 버전 0.7</div>
