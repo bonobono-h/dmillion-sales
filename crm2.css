@@ -118,6 +118,11 @@
 .form textarea#crm2NeedsSource,.form textarea#crm2NeedsSummary{font-size:12px;line-height:1.65;min-height:145px}
 @media(max-width:640px){.crm-needs-heading{align-items:flex-start}.crm-needs-toolbar{align-items:flex-start}}
 
+/* iPhone home-screen app mode and install guide. */
+.ios-install-guide{position:fixed;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));z-index:2600;background:#101b34;color:#fff;border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:16px 44px 16px 17px;box-shadow:0 18px 50px rgba(9,18,42,.3);display:grid;gap:7px;max-width:520px;margin:auto}
+.ios-install-guide strong{font-size:14px}.ios-install-guide span{font-size:12px;line-height:1.65;color:#d9e1f2}.ios-install-guide b{color:#fff}.ios-install-close{position:absolute;right:10px;top:9px;width:30px;height:30px;border:0;border-radius:9px;background:rgba(255,255,255,.1);color:#fff;font-size:19px;line-height:1}
+@media(display-mode:standalone){html,body{min-height:100dvh}.shell{min-height:100dvh}.top{padding-top:env(safe-area-inset-top);height:calc(60px + env(safe-area-inset-top))}.footer-note{padding-bottom:calc(16px + env(safe-area-inset-bottom))}.toast{bottom:calc(18px + env(safe-area-inset-bottom));right:max(15px,env(safe-area-inset-right))}}
+
 /* CRM 2.0: readable, numbered follow-up action cards */
 .crm-task-list{display:grid;gap:10px}
 .crm-task-row{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;border:1px solid #e1e7f2;border-radius:12px;background:#fff;padding:13px 14px;box-shadow:0 2px 8px rgba(34,55,95,.025)}

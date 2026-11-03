@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="DMILLION">
+  <defs>
+    <linearGradient id="bg" x1="64" y1="32" x2="448" y2="480" gradientUnits="userSpaceOnUse"><stop stop-color="#5262df"/><stop offset="1" stop-color="#243793"/></linearGradient>
+    <linearGradient id="shine" x1="132" y1="102" x2="382" y2="408" gradientUnits="userSpaceOnUse"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#dce4ff"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="#0b1730"/>
+  <rect x="42" y="42" width="428" height="428" rx="98" fill="url(#bg)"/>
+  <path fill="url(#shine)" d="M145 116h109c94 0 157 54 157 140s-63 140-157 140H145V116Zm105 213c48 0 78-26 78-73s-30-73-78-73h-25v146h25Z"/>
+  <circle cx="390" cy="125" r="18" fill="#ff4f6d"/>
+</svg>

@@ -1,0 +1,17 @@
+{
+  "id": "./crm2.html",
+  "name": "DMILLION CRM",
+  "short_name": "DMILLION",
+  "description": "DMILLION 영업활동 음성 기록 및 고객관리 CRM",
+  "lang": "ko-KR",
+  "start_url": "./crm2.html?view=agent&source=home",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#f5f7fb",
+  "theme_color": "#0b1730",
+  "icons": [
+    {"src": "icons/dmillion-app-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icons/dmillion-app-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
