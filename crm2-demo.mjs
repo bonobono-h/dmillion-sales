@@ -20,11 +20,12 @@ export const demoData = {
   ],
   projects:[{_id:'demo-p1',name:'2026 제조AI 실증 과제',companyIds:['demo-c5'],status:'수행 중',budget:190000000}],
   opportunities:[
-    {_id:'demo-o1',companyId:'demo-c1',title:'비전검사 자동화 셀',stage:'proposal',estimatedAmount:125000000,owner:'영업 1팀',createdAt:'2026-10-10'},
-    {_id:'demo-o2',companyId:'demo-c1',title:'자동 적재 라인',stage:'discovery',estimatedAmount:null,owner:'영업 1팀'},
-    {_id:'demo-o3',companyId:'demo-c2',title:'용접로봇 셀',stage:'qualification',estimatedAmount:220000000,owner:'영업 2팀'},
-    {_id:'demo-o4',companyId:'demo-c5',title:'제조AI 실증 구축',stage:'won',estimatedAmount:190000000,owner:'영업 2팀'}
+    {_id:'demo-o1',companyId:'demo-c1',title:'비전검사 자동화 셀',stage:'negotiation',program:'제조로봇',stageHistory:[{from:'proposal',to:'negotiation',at:'2026-11-03T05:00:00Z'}],estimatedAmount:125000000,owner:'영업 1팀',createdAt:'2026-10-10'},
+    {_id:'demo-o2',companyId:'demo-c1',title:'자동 적재 라인',stage:'discovery',createdAt:'2026-11-02T02:00:00Z',estimatedAmount:null,owner:'영업 1팀'},
+    {_id:'demo-o3',companyId:'demo-c2',title:'용접로봇 셀',stage:'qualification',program:'제조로봇',estimatedAmount:220000000,owner:'영업 2팀'},
+    {_id:'demo-o4',companyId:'demo-c5',title:'스마트공장 고도화',stage:'won',program:'스마트공장',estimatedAmount:190000000,owner:'영업 2팀'}
   ],
+  goals:[{_id:'sales-2026Q4',kind:'salesGoal',label:'2026년 4분기 영업 목표 (데모)',start:'2026-10-01',end:'2026-12-31',revenueTarget:2700000000,programs:[{name:'스마트공장',count:3,amountPerDeal:400000000},{name:'제조로봇',count:3,amountPerDeal:500000000}]}],
   tasks:[
     {_id:'demo-t1',companyId:'demo-c1',opportunityId:'demo-o1',title:'비전검사 제안서 검토',status:'todo',dueAt:'2026-11-03',priority:'high'},
     {_id:'demo-t2',companyId:'demo-c2',opportunityId:'demo-o3',title:'기술 미팅 일정 확인',status:'todo',dueAt:'2026-11-06',priority:'normal'}

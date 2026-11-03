@@ -1,5 +1,5 @@
-const CACHE='dmillion-crm-ios-20261103-1';
-const SHELL=['./crm2.html','./crm2.css','./crm2.js','./pwa.js','./config.js','./supabase.js','./bridge.js','./crm2-demo.mjs','./crm2-agent.js','./crm2-agent-core.mjs','./crm2-core.mjs','./crm2-coverage.mjs','./crm2-intake.js','./crm2-intake-core.mjs','./crm2-timeline.mjs','./manifest.webmanifest','./icons/dmillion-app.svg','./icons/dmillion-app-180.png','./icons/dmillion-app-192.png','./icons/dmillion-app-512.png'];
+const CACHE='dmillion-crm-ios-20261103-2';
+const SHELL=['./crm2.html','./crm2.css','./crm2.js','./pwa.js','./config.js','./supabase.js','./bridge.js','./crm2-demo.mjs','./crm2-agent.js','./crm2-agent-core.mjs','./crm2-core.mjs','./crm2-coverage.mjs','./crm2-intake.js','./crm2-intake-core.mjs','./crm2-timeline.mjs','./crm2-performance.mjs','./manifest.webmanifest','./icons/dmillion-app.svg','./icons/dmillion-app-180.png','./icons/dmillion-app-192.png','./icons/dmillion-app-512.png'];
 
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE&&key.startsWith('dmillion-crm-')).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));

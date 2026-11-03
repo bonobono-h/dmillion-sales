@@ -5,6 +5,7 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
+import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261103-agent-3';
 
 const $=id=>document.getElementById(id);
@@ -68,10 +69,10 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
-  companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],
+  companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
@@ -82,7 +83,7 @@ const state={
 };
 const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
 const agent=createSalesAgentUI({state,render,toast,reload:loadLive});
-const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',import:'엑셀 비교·가져오기'};
+const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -95,13 +96,14 @@ function categoryChoices() {
 }
 
 async function loadDemo(){
-  const {demoData}=await import('./crm2-demo.mjs?v=20261029-multilist');
+  const {demoData}=await import('./crm2-demo.mjs?v=20261103-perf-1');
   state.companies=structuredClone(demoData.companies);
   state.profiles=structuredClone(demoData.profiles);
   state.activities=structuredClone(demoData.activities);
   state.projects=structuredClone(demoData.projects);
   state.opportunities=structuredClone(demoData.opportunities);
   state.tasks=structuredClone(demoData.tasks);
+  state.goals=structuredClone(demoData.goals||[]);
   state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts=structuredClone(demoData.contacts||{});state.categories=[];
   $('modePill').textContent='데모 · 가상 업체';$('modePill').classList.add('demo');
 }
@@ -120,6 +122,7 @@ async function loadLive(){
   state.companies=data[0];state.activities=data[1];state.projects=data[2];
   state.profiles=Object.fromEntries(data[3].map(x=>[x._id,x]));
   state.opportunities=data[4];state.tasks=data[5];state.categories=data[6];state.connected=true;
+  state.goals=await getDocs(db,'targets').then(r=>r.filter(x=>x.kind==='salesGoal')).catch(()=>[]);
   const protectedContacts=state.canWrite?await getDocs(db,'data/contacts/items'):[];
   state.contacts=Object.fromEntries(protectedContacts.map(x=>[x._id,x]));
   $('modePill').textContent=state.isAdmin?'운영 데이터 · 관리자':state.canWrite?'운영 데이터 · 영업담당':'운영 데이터 · 보기전용';
@@ -163,7 +166,7 @@ function render(){
   const timelineScroll=timelineList?timelineList.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
   $('crumb').textContent=navNames[state.screen]||state.screen;
-  const body={agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
+  const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
@@ -629,6 +632,103 @@ function renderManager(){
   <section class="panel wide-panel"><h2 class="panel-title">고객사 등급 분포</h2><p class="top-desc">업체 기본정보에 적용된 CRM 분류 기준</p><div class="barlist">${grades.map(r=>`<div class="bar-item"><span>${esc(r.name)}</span><div class="bar-bg"><div class="bar-fill" style="width:${100*r.n/Math.max(1,state.companies.length)}%"></div></div><strong>${r.n}곳</strong></div>`).join('')}</div></section></div>
   <div class="callout" style="margin-top:16px"><h4>집계 기준</h4><p>영업 기회의 '수주'만 수주 건으로 집계합니다. 과제의 '선정'과 계약 실적, 매출 인식 시점은 자동으로 동일하게 취급하지 않습니다. 실제 매출·마진 분석은 기존 관리자 권한과 증빙 데이터를 연결한 후 별도 구현해야 합니다.</p></div>`;
 }
+/* ---------------- 영업 실적 (목표 대비) ---------------- */
+function currentGoal(){return pickGoal(state.goals,localToday());}
+function programChoices(currentValue=''){
+  const names=[...(currentGoal()?.programs||[]).map(p=>p.name),'스마트공장','제조로봇','제조AI','자동화(자체)','기타'];
+  if(currentValue)names.push(currentValue);
+  const out=[],seen=new Set();
+  for(const raw of names){const n=safeText(raw),k=n.normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase('ko');if(n&&!seen.has(k)){out.push(n);seen.add(k);}}
+  return out;
+}
+function perfBar(done,target){
+  const pct=target?Math.min(100,Math.round(100*done/target)):0;
+  return `<div class="perf-bar" role="img" aria-label="${done} / ${target}"><div class="perf-bar-fill" style="width:${pct}%"></div></div>`;
+}
+const shortDay=d=>{const x=String(d||'').slice(0,10);return x?`${Number(x.slice(5,7))}/${Number(x.slice(8,10))}`:'';};
+function oppLine(o){
+  return `<div class="perf-opp" data-action="go-company" data-id="${attr(o.companyId)}" tabindex="0">
+    <div><strong>${esc(cname(o.companyId))}</strong><span class="muted tiny"> · ${esc(o.title||'')}</span></div>
+    <div class="perf-opp-meta">${tag(STAGE_LABEL[o.stage]||o.stage,o.stage==='won'?'ok':o.stage==='negotiation'?'b':'outline')}<span class="tiny muted">${moneyKRW(o.estimatedAmount)}</span></div></div>`;
+}
+function renderPerformance(){
+  const goal=currentGoal();
+  const r=buildPerformance({goal,opportunities:state.opportunities,activities:state.activities,tasks:state.tasks,today:localToday()});
+  const head=heading('영업 실적',goal?`${goal.label||'영업 목표'} · ${shortDay(goal.start)}~${shortDay(goal.end)}${r.weeksLeft!==null?` · 남은 기간 ${r.weeksLeft}주`:''}`:'목표 대비 진행 현황을 봅니다.',
+    state.isAdmin?btn('edit-goal',goal?'목표 수정':'목표 설정','secondary'):'');
+  if(!goal)return `${head}<div class="notice warning">설정된 영업 목표가 없습니다. ${state.isAdmin?'오른쪽 위 <b>목표 설정</b>에서 기간과 사업별 목표 건수·금액을 넣어 주세요.':'관리자에게 목표 설정을 요청해 주세요.'}</div>`;
+  const t=r.totals,w=r.thisWeek,u=r.upcoming;
+  const programPanels=r.programs.map(p=>`<section class="panel perf-program">
+    <div class="panel-head"><div><h2 class="panel-title">${esc(p.name)}</h2><p class="panel-subtitle">목표 ${p.targetCount}건 · 건당 ${moneyKRW(p.amountPerDeal)}</p></div>
+      ${tag(p.remainingAgreed?`진행 동의 ${p.remainingAgreed}건 남음`:'진행 동의 목표 달성',p.remainingAgreed?'warning':'ok')}</div>
+    <div class="panel-body">
+      <div class="perf-metric"><span>고객 진행 동의</span><strong>${p.agreedCount} / ${p.targetCount}건</strong></div>${perfBar(p.agreedCount,p.targetCount)}
+      <div class="perf-metric"><span>수주</span><strong>${p.wonCount} / ${p.targetCount}건 · ${moneyKRW(p.wonAmount)}</strong></div>${perfBar(p.wonCount,p.targetCount)}
+      <div class="section-label" style="margin-top:18px">영업 기회 ${p.opportunities.length}건${p.missingAmount?` · 금액 미입력 ${p.missingAmount}건`:''}</div>
+      <div class="perf-opp-list">${p.opportunities.filter(o=>o.stage!=='lost').sort((a,b)=>stageRank(b.stage)-stageRank(a.stage)).map(oppLine).join('')||'<p class="empty-inline">아직 이 사업으로 등록된 영업 기회가 없습니다.</p>'}</div>
+    </div></section>`).join('');
+  const moves=w.stageMoves.map(m=>`<li><b>${esc(cname(m.opp.companyId))}</b> ${esc(m.opp.title||'')} — ${esc(STAGE_LABEL[m.from]||m.from||'신규')} → <b>${esc(STAGE_LABEL[m.to]||m.to)}</b> <span class="muted">${shortDay(timelineDayLocal(m.at))}</span></li>`).join('');
+  const acts=w.activities.map(a=>`<li><span class="muted">${shortDay(timelineDayLocal(activityDate(a)))}</span> <b>${esc(cname(a.companyId))}</b> ${esc(a.type||'기록')} · ${esc(a.title||a.summary||'')}</li>`).join('');
+  const done=w.doneTasks.map(x=>`<li><b>${esc(cname(x.companyId))}</b> ${esc(x.title)}</li>`).join('');
+  const next=[...u.overdue.map(x=>({...x,_late:true})),...u.tasks].map(x=>`<li>${x._late?tag('기한 지남','bad'):`<span class="muted">${shortDay(x.dueAt)}</span>`} <b>${esc(cname(x.companyId))}</b> ${esc(x.title)}</li>`).join('');
+  const planned=u.planned.map(a=>`<li><span class="muted">${shortDay(timelineDayLocal(activityDate(a)))}</span> <b>${esc(cname(a.companyId))}</b> ${esc(a.type||'')} 예정</li>`).join('');
+  return `${head}
+  <div class="stats">
+    ${stat('고객 진행 동의',`${t.agreedCount} / ${t.targetCount}건`,`협상·수주 단계 · ${t.remainingAgreed}건 남음`,'◇')}
+    ${stat('수주',`${t.wonCount} / ${t.targetCount}건`,`계약 확정 · ${t.remainingWon}건 남음`,'✓')}
+    ${stat('수주 금액',moneyKRW(t.wonAmount),`목표 ${moneyKRW(t.targetAmount)} · ${moneyKRW(t.remainingAmount)} 남음`,'₩')}
+    ${stat('진행 중 예상 금액',moneyKRW(t.pipelineAmount),'목표 사업 영업 기회 중 진행 건','▤')}
+  </div>
+  <div class="two-cols">${programPanels}</div>
+  <div class="two-cols" style="margin-top:18px">
+    <section class="panel"><div class="panel-head"><div><h2 class="panel-title">이번 주 진전</h2><p class="panel-subtitle">${shortDay(w.start)}(월) ~ ${shortDay(w.end)}(일) · 미팅 ${w.meetings.length}건 · 연락 ${w.contacts.length}건</p></div></div>
+      <div class="panel-body perf-week">
+        <div class="section-label">단계 변화 ${w.stageMoves.length}건</div><ul>${moves||'<li class="muted">이번 주 단계가 바뀐 건이 없습니다.</li>'}</ul>
+        ${w.newOpportunities.length?`<div class="section-label">새 영업 기회 ${w.newOpportunities.length}건</div><ul>${w.newOpportunities.map(o=>`<li><b>${esc(cname(o.companyId))}</b> ${esc(o.title||'')} ${o.program?tag(o.program,'outline'):''}</li>`).join('')}</ul>`:''}
+        <div class="section-label">미팅·연락 기록 ${w.activities.length}건</div><ul>${acts||'<li class="muted">이번 주 기록이 없습니다.</li>'}</ul>
+        ${done?`<div class="section-label">완료한 할 일 ${w.doneTasks.length}건</div><ul>${done}</ul>`:''}
+      </div></section>
+    <section class="panel"><div class="panel-head"><div><h2 class="panel-title">다음 할 일</h2><p class="panel-subtitle">오늘 ~ ${shortDay(u.end)} · 기한 지난 일 포함</p></div></div>
+      <div class="panel-body perf-week">
+        <ul>${next||'<li class="muted">기한이 잡힌 할 일이 없습니다.</li>'}</ul>
+        ${planned?`<div class="section-label">예정된 미팅</div><ul>${planned}</ul>`:''}
+      </div></section>
+  </div>
+  ${r.unassigned.length?`<div class="notice warning" style="margin-top:18px"><b>지원사업 구분이 없는 진행 중 영업 기회 ${r.unassigned.length}건</b>은 실적에 잡히지 않습니다. 편집에서 구분을 넣어 주세요.<div class="perf-unassigned">${r.unassigned.map(o=>`<span>${esc(cname(o.companyId))} · ${esc(o.title||'')} ${state.canWrite?btn('edit-opportunity','구분 넣기','secondary',`data-id="${attr(cid(o))}"`):''}</span>`).join('')}</div></div>`:''}
+  <div class="callout" style="margin-top:16px"><h4>집계 기준</h4><p>고객 진행 동의는 영업 기회 단계가 협상 또는 수주인 건, 수주는 수주 단계인 건만 셉니다. 사업 구분은 영업 기회의 '지원사업 구분'으로 나눕니다. 지원사업 선정만으로는 수주로 세지 않습니다. 이번 주 단계 변화는 이 화면 배포 이후 저장된 변경부터 기록됩니다.</p></div>`;
+}
+function stageRank(s){return {won:5,negotiation:4,proposal:3,qualification:2,discovery:1,hold:0,lost:-1}[s]??0;}
+function timelineDayLocal(v){if(!v)return '';const raw=String(v);if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;const d=new Date(raw);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}
+function goalModal(){
+  if(!state.isAdmin)return toast('목표는 관리자만 바꿀 수 있습니다.',true);
+  const g=currentGoal();
+  const today=localToday(),q=Math.floor((Number(today.slice(5,7))-1)/3);
+  const qStart=`${today.slice(0,4)}-${String(q*3+1).padStart(2,'0')}-01`;
+  const qEndDate=new Date(Date.UTC(Number(today.slice(0,4)),q*3+3,0)).toISOString().slice(0,10);
+  const rows=(g?.programs?.length?g.programs:[{name:'스마트공장',count:'',amountPerDeal:''},{name:'제조로봇',count:'',amountPerDeal:''}]).concat([{name:'',count:'',amountPerDeal:''}]).slice(0,4);
+  showModal(g?'영업 목표 수정':'영업 목표 설정','사업별 목표 건수와 건당 금액을 넣으면 실적 화면이 이 기준으로 계산됩니다.',
+    `<label>목표 이름 <input name="label" required maxlength="60" value="${attr(g?.label||`${today.slice(0,4)}년 ${q+1}분기 영업 목표`)}"></label>
+    <div class="form-row"><label>시작일 <input type="date" name="start" required value="${attr(g?.start||qStart)}"></label><label>종료일 <input type="date" name="end" required value="${attr(g?.end||qEndDate)}"></label></div>
+    ${rows.map((p,i)=>`<div class="form-row perf-goal-row"><label>사업 ${i+1} <input name="pname" maxlength="40" value="${attr(p.name||'')}" placeholder="예: 스마트공장"></label>
+      <div class="form-row"><label>목표 건수 <input name="pcount" type="number" min="0" step="1" value="${attr(p.count??'')}"></label><label>건당 금액(억원) <input name="pamount" type="number" min="0" step="0.1" value="${attr(p.amountPerDeal?p.amountPerDeal/100000000:'')}"></label></div></div>`).join('')}
+    <label>매출 목표(억원) <input name="revenue" type="number" min="0" step="0.1" value="${attr(g?.revenueTarget?g.revenueTarget/100000000:'')}"><small>비우면 사업별 건수 × 건당 금액 합계로 계산합니다.</small></label>`,
+    async fd=>{
+      const names=fd.getAll('pname'),counts=fd.getAll('pcount'),amts=fd.getAll('pamount');
+      const programs=names.map((n,i)=>({name:safeText(n),count:Number(counts[i]||0),amountPerDeal:Math.round(Number(amts[i]||0)*100000000)})).filter(p=>p.name&&p.count>0);
+      if(!programs.length)throw new Error('사업 이름과 목표 건수를 하나 이상 넣어 주세요.');
+      const start=safeText(fd.get('start')),end=safeText(fd.get('end'));
+      if(!start||!end||end<start)throw new Error('기간을 확인해 주세요.');
+      const rev=fd.get('revenue');
+      const data={kind:'salesGoal',label:safeText(fd.get('label')),start,end,programs,
+        revenueTarget:rev===''?programs.reduce((s,p)=>s+p.count*p.amountPerDeal,0):Math.round(Number(rev)*100000000),
+        updatedAt:new Date().toISOString(),updatedBy:state.userId||null};
+      const id=g?._id||goalDocId(start);
+      if(!state.demo)await state.db.doc(`targets/${id}`).set(data);
+      state.goals=[...state.goals.filter(x=>x._id!==id),{_id:id,...data}];
+      return {message:state.demo?'데모: 목표를 적용했습니다. (서버 저장 없음)':'영업 목표를 저장했습니다.'};
+    });
+}
+
 function importList(){
   return state.importPreview.filter(x=>state.importFilter==='all'||x.status===state.importFilter);
 }
@@ -947,15 +1047,17 @@ function opportunityModal(id=null){
     <label>예상 금액 (원)<input name="estimatedAmount" type="number" min="0" step="1" value="${attr(current?.estimatedAmount??'')}" placeholder="미정이면 빈칸"></label></div>
     <div class="form-row"><label>담당자 <input name="owner" value="${attr(current?.owner||'')}"></label>
     <label>예상 계약일 <input name="expectedCloseDate" type="date" value="${attr(current?.expectedCloseDate||'')}"></label></div>
-    <label>제안 분야 <input name="solution" value="${attr(current?.solution||'')}" placeholder="예: 로봇·자동화 / 제조AI"></label>
+    <div class="form-row"><label>지원사업 구분 <select name="program">${options(programChoices(current?.program),current?.program||'','미지정')}</select><small>목표 실적은 이 구분으로 집계합니다.</small></label>
+    <label>제안 분야 <input name="solution" value="${attr(current?.solution||'')}" placeholder="예: 로봇·자동화 / 제조AI"></label></div>
     <label>고객 니즈 / 제안 메모 <textarea name="notes">${esc(current?.notes||'')}</textarea></label>` ,
     async fd=>{
       const amount=fd.get('estimatedAmount');
       const patch={companyId:String(fd.get('companyId')),title:safeText(fd.get('title')),stage:String(fd.get('stage')),
         estimatedAmount:amount===''?null:Number(amount),owner:safeText(fd.get('owner')),
         expectedCloseDate:safeText(fd.get('expectedCloseDate'))||null,solution:safeText(fd.get('solution')),
-        notes:safeText(fd.get('notes')),updatedAt:new Date().toISOString()};
+        notes:safeText(fd.get('notes')),program:safeText(fd.get('program')),updatedAt:new Date().toISOString()};
       if(!patch.companyId||!patch.title)throw new Error('고객사와 영업 기회명을 입력해 주세요.');
+      if(!current||current.stage!==patch.stage)patch.stageHistory=appendStageHistory(current||{},patch.stage,patch.updatedAt);
       const newId=id||uid();
       const data={...current,...patch,...(!id?{createdAt:new Date().toISOString()}:{} )};
       await saveDoc('opportunities',newId,patch,id?true:null);
@@ -1214,6 +1316,7 @@ document.addEventListener('click',async e=>{
     else if(action==='new-meeting')meetingModal();
     else if(action==='new-opportunity')opportunityModal();
     else if(action==='edit-opportunity')opportunityModal(id);
+    else if(action==='edit-goal')goalModal();
     else if(action==='new-task')taskModal();
     else if(action==='convert-legacy-actions')await convertLegacyActions();
     else if(action==='complete-task')await completeTask(id);
