@@ -13,7 +13,7 @@
   <link rel="manifest" href="manifest.webmanifest?v=20261103-ios-1">
   <link rel="icon" type="image/svg+xml" href="icons/dmillion-app.svg?v=20261103-ios-1">
   <link rel="apple-touch-icon" sizes="180x180" href="icons/dmillion-app-180.png?v=20261103-ios-1">
-  <link rel="stylesheet" href="crm2.css?v=20261103-goals-5">
+  <link rel="stylesheet" href="crm2.css?v=20261103-grades-1">
   <script src="pwa.js?v=20261103-ios-1" defer></script>
   <script type="module">
     const demo = new URLSearchParams(location.search).get('demo') === '1';
@@ -27,7 +27,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261103-goals-5');
+    await import('./crm2.js?v=20261103-grades-1');
   </script>
 </head>
 <body>

@@ -1,12 +1,12 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-goals-5';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-grades-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261103-goals-5';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261103-grades-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -135,6 +135,7 @@ async function loadLive(){
   state.salesOwners=await getDocs(db,'crm2Owners');
   state.companies=data[0];state.activities=data[1];state.projects=data[2];
   state.profiles=Object.fromEntries(data[3].map(x=>[x._id,x]));
+  for(const c of state.companies){const p=state.profiles[cid(c)]||{};state.profiles[cid(c)]={accountGrade:c.grade||'',...p};}
   state.opportunities=data[4];state.tasks=data[5];state.categories=data[6];state.connected=true;
   state.goals=await getDocs(db,'targets').then(r=>r.filter(x=>x.kind==='salesGoal')).catch(()=>[]);
   const protectedContacts=state.canWrite?await getDocs(db,'data/contacts/items'):[];
