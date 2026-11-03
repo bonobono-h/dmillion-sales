@@ -1,7 +1,7 @@
 import {buildRuleAgentDraft,matchAgentCompanies,sanitizeAgentDraft} from './crm2-agent-core.mjs?v=20261103-agent-3';
 import {sourceHash} from './crm2-intake-core.mjs?v=20261030-intake-1';
 
-export function createSalesAgentUI({state,render,toast,reload}){
+export function createSalesAgentUI({state,render,toast,reload,newCompany,openCompany}){
   const ui={transcript:'',draft:null,busy:false,listening:false,recognition:null,result:null,error:'',analysisNotice:''};
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const id=company=>company?._id||company?.id||'';
@@ -19,7 +19,7 @@ export function createSalesAgentUI({state,render,toast,reload}){
       <div class="agent-review-head"><div><p class="eyebrow">검토 후에만 저장</p><h2 class="panel-title">CRM 반영 초안</h2></div><span class="pill ${draft.mode==='ai'?'ok':'warning'}">${draft.mode==='ai'?'AI 구조화 분석':'기본 규칙 분석'}</span></div>
       <form id="agentApprovalForm" class="agent-review-form">
         <div class="agent-field-grid">
-          <label>업체<select name="companyId" required>${companyOptions(selected)}</select><small>${esc(draft.companyCandidates?.map(candidate=>candidate.name+' · '+candidate.reason).join(', ')||'업체명이 자동으로 확인되지 않았습니다.')}</small></label>
+          <label>업체<select name="companyId" required>${companyOptions(selected)}</select><small>${esc(draft.companyCandidates?.map(candidate=>candidate.name+' · '+candidate.reason).join(', ')||'업체명이 자동으로 확인되지 않았습니다.')}</small><button type="button" class="btn secondary" data-agent="new-company">＋ 신규 업체 등록</button></label>
           <label>활동 일시<input name="occurredAt" type="datetime-local" required value="${esc(localDateTime(draft.occurredAt))}"><small>${esc(draft.dateBasis||'저장 전 확인')}</small></label>
           <label>활동 유형<select name="activityType">${['전화','미팅','첫 미팅','현장 방문','내방','화상','제안·발표'].map(value=>`<option ${value===draft.activityType?'selected':''}>${value}</option>`).join('')}</select></label>
           <label>등록 제목<input name="title" required maxlength="160" value="${esc(draft.title)}"></label>
@@ -32,7 +32,7 @@ export function createSalesAgentUI({state,render,toast,reload}){
         <div class="agent-stage-note"><span>단계 제안</span><strong>${esc(draft.stageSuggestion||'현재 단계 유지')}</strong><small>참고용이며 업체 단계·금액·계약 상태는 자동 변경하지 않습니다.</small></div>
         <div class="section-label">후속업무 후보</div>
         <div class="agent-task-list">${draft.tasks.length?draft.tasks.map((task,index)=>`<div class="intake-task">
-          <label class="intake-check"><input type="checkbox" name="taskUse" value="${index}" checked> 업무로 등록</label>
+          <label class="intake-check"><input type="checkbox" name="taskUse" value="${index}" ${task.use===false?'':'checked'}> 업무로 등록</label>
           <label>업무<input name="taskTitle${index}" maxlength="180" value="${esc(task.title)}"></label>
           <label>기한<input type="date" name="taskDue${index}" value="${esc(task.dueAt)}"></label>
           <small>근거: ${esc(task.evidence||'입력 내용')}</small>
@@ -57,7 +57,7 @@ export function createSalesAgentUI({state,render,toast,reload}){
         ${ui.error?`<p class="notice warning" role="alert">${esc(ui.error)}</p>`:''}
         ${ui.analysisNotice?`<p class="notice">${esc(ui.analysisNotice)}</p>`:''}
         <div class="agent-flow"><span><b>1</b> 말하기</span><i>→</i><span><b>2</b> 초안 확인</span><i>→</i><span><b>3</b> 승인</span><i>→</i><span><b>4</b> CRM 반영</span></div>
-        <div class="heading-actions"><button type="button" class="btn secondary" data-agent="example">예시 넣기</button><button type="button" class="btn primary" data-agent="analyze" ${ui.busy?'disabled':''}>${ui.busy?'분석 중…':'내용 분석하기'}</button></div>
+        <div class="heading-actions"><button type="button" class="btn secondary" data-agent="new-company">＋ 신규 업체 등록</button><button type="button" class="btn secondary" data-agent="example">예시 넣기</button><button type="button" class="btn primary" data-agent="analyze" ${ui.busy?'disabled':''}>${ui.busy?'분석 중…':'내용 분석하기'}</button></div>
       </section>
       <section class="agent-guardrails"><article><strong>승인 전 저장 안 함</strong><span>분석만으로 운영 DB를 바꾸지 않습니다.</span></article><article><strong>확정과 추정 분리</strong><span>미정 일정과 내부 검토는 확인 항목으로 표시합니다.</span></article><article><strong>핵심 상태 보호</strong><span>단계·금액·계약 상태는 자동 변경하지 않습니다.</span></article></section>
       ${draftView()}`;
@@ -134,7 +134,14 @@ export function createSalesAgentUI({state,render,toast,reload}){
       else if(action==='example'){ui.transcript='오늘 케이블루 담당자와 통화했어. 비전검사에 관심은 있는데 예산이 부족하대. 내년에 스마트공장 지원사업으로 추진하고 싶다고 했고, 다음 주에 내가 공고 자료를 보내주기로 했어.';ui.draft=null;render();}
       else if(action==='analyze'||action==='reanalyze')await analyze();
       else if(action==='reset'){ui.result=null;ui.draft=null;ui.transcript='';ui.error='';ui.analysisNotice='';render();}
-      else if(action==='company'){state.selectedId=button.dataset.id;state.companyTab='overview';state.screen='accounts';render();}
+      else if(action==='company')openCompany(button.dataset.id,false);
+      else if(action==='new-company'){
+        stopRecognition();
+        ui.transcript=document.getElementById('agentTranscript')?.value||ui.transcript;
+        const form=document.getElementById('agentApprovalForm');
+        if(form&&ui.draft){const values=new FormData(form),selectedTasks=new Set(values.getAll('taskUse').map(Number));ui.draft={...ui.draft,companyId:String(values.get('companyId')||''),title:String(values.get('title')||''),summary:String(values.get('summary')||''),occurredAt:String(values.get('occurredAt')||''),activityType:String(values.get('activityType')||'전화')};ui.draft.tasks=ui.draft.tasks.map((task,i)=>({...task,use:selectedTasks.has(i),title:String(values.get('taskTitle'+i)||task.title),dueAt:String(values.get('taskDue'+i)||'')}));}
+        newCompany(company=>{if(ui.draft){ui.draft.companyId=id(company);ui.draft.unknowns=ui.draft.unknowns.filter(x=>x!=='업체를 직접 선택해야 합니다.');ui.draft.companyCandidates=[{id:id(company),name:company.name,reason:'직접 신규 등록'}];}ui.analysisNotice=`${company.name} 업체를 등록했습니다. 활동 기록은 확인 후 별도로 승인해 주세요.`;});
+      }
     }catch(error){ui.error=error.message||'요청을 완료하지 못했습니다.';toast(ui.error,true);render();}finally{button.disabled=false;}
   });
   document.addEventListener('input',event=>{

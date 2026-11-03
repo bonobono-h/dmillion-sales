@@ -307,6 +307,7 @@ export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
     if(market && !programCategories(p).includes(market)) return false;
     if(group && p.outreachBucket!==group) return false;
     if(stage && c.stage!==stage) return false;
+    if(filters.owner && c.owner!==filters.owner)return false;
     if(filters.hasTask && !nextActionFor(c,tasks))return false;
     if(q && !textSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,programCategories(p).join(' '),p.salesComment,p.contactReason,p.contactName].join(' ')).includes(q))return false;
     return true;

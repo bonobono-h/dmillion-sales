@@ -1,12 +1,12 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261102-kind-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-navigation-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261103-agent-3';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261103-navigation-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -69,7 +69,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance'}[new URLSearchParams(location.search).get('view')]||'coverage'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance'}[new URLSearchParams(location.search).get('view')]||'accounts'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
@@ -82,8 +82,15 @@ const state={
   loading:false,connected:false,legacyImporting:false
 };
 const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
-const agent=createSalesAgentUI({state,render,toast,reload:loadLive});
-const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'업체 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기'};
+const agent=createSalesAgentUI({state,render,toast,reload:loadLive,newCompany:companyModal,openCompany:selectCompany});
+const DEFAULT_OWNERS=['김웅섭','윤홍렬','한인탁','박진우'];
+state.salesOwners=[];state.detailOpen=false;state.accountView='list';state.returnScreen='accounts';state.accountScroll=0;
+if(state.screen==='coverage'){state.screen='accounts';state.accountView='coverage';}
+function ownerChoices(){return [...new Set([...DEFAULT_OWNERS,...state.salesOwners.map(x=>x.name),...state.companies.map(x=>x.owner)].filter(Boolean))];}
+function ownerFields(value=''){return `<div class="form-row"><label>디밀리언 영업 담당자<select name="salesOwner">${options(ownerChoices(),value,'담당 미지정')}</select></label><label>새 담당자 추가<input name="newOwner" maxlength="40" placeholder="새 이름 입력 시 선택한 담당자 대신 지정"></label></div>`;}
+async function chosenOwner(fd){const extra=safeText(fd.get('newOwner'));if(extra.length>40)throw new Error('담당자 이름은 40자 이하로 입력해 주세요.');const name=extra||safeText(fd.get('salesOwner'));if(extra&&!ownerChoices().includes(extra)){const id=uid();await saveDoc('crm2Owners',id,{name:extra,createdAt:new Date().toISOString()});state.salesOwners.push({_id:id,name:extra});}return name;}
+function accountTabs(){return `<div class="filter-chips account-view-tabs" aria-label="고객 관리 보기">${[['list','업체 목록'],['coverage','관리 현황'],['home','오늘 할 일']].map(([key,label])=>`<button data-action="account-view" data-view="${key}" class="${state.accountView===key?'active':''}">${label}</button>`).join('')}</div>`;}
+const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'고객 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기'};
 function categoryChoices() {
   const candidates=[...MARKETS,...state.categories.map(x=>x.name),
     ...Object.values(state.profiles).flatMap(p=>[...programCategories(p),p.market2027])];
@@ -119,6 +126,7 @@ async function loadLive(){
   state.role=window.dmSync?.whoami()?.role || (state.isAdmin?'admin':state.canWrite?'sales':'view');
   const names=['companies','activities','projects','crm2Profiles','opportunities','tasks','crm2Categories'];
   const data=await Promise.all(names.map(x=>getDocs(db,x).catch(e=>{throw new Error(`${x} 데이터 조회에 실패했습니다: ${e.message}`);} )));
+  state.salesOwners=await getDocs(db,'crm2Owners');
   state.companies=data[0];state.activities=data[1];state.projects=data[2];
   state.profiles=Object.fromEntries(data[3].map(x=>[x._id,x]));
   state.opportunities=data[4];state.tasks=data[5];state.categories=data[6];state.connected=true;
@@ -164,7 +172,7 @@ function render(){
   const listScroll=accountList?{top:accountList.scrollTop,left:accountList.scrollLeft}:null;
   const detailScroll=detailBody?detailBody.scrollTop:null;
   const timelineScroll=timelineList?timelineList.scrollTop:null;
-  document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===state.screen));
+  document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===(['accounts','coverage','home'].includes(state.screen)?'accounts':state.screen)));
   $('crumb').textContent=navNames[state.screen]||state.screen;
   const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
   $main.innerHTML=body?body():renderAccounts();
@@ -188,7 +196,7 @@ function render(){
  */
 function updateCompanyDetailOnly(){
   if(state.screen!=='accounts')return false;
-  const panel=$main.querySelector('.account-layout > aside.panel');
+  const panel=$main.querySelector('.company-detail-panel');
   if(!panel)return false;
   panel.innerHTML=renderCompanyDetail();
   $main.querySelectorAll('tr[data-action="select-company"]').forEach(row=>{
@@ -200,11 +208,13 @@ function updateCompanyDetailOnly(){
 }
 function selectCompany(id,updateInPlace=true){
   if(!cc(id))return;
+  if(!state.detailOpen){state.returnScreen=state.screen;state.accountScroll=$main.querySelector('.table-scroll')?.scrollTop||0;}
+  state.detailOpen=true;
   state.selectedId=id;
   state.companyTab='overview';
-  if(updateInPlace&&updateCompanyDetailOnly())return;
   state.screen='accounts';
   render();
+  window.scrollTo({top:0});
 }
 function activeAccountList(){
   // Contact data are searchable only when already authorized by the existing backend.
@@ -221,7 +231,7 @@ function renderCoverage(){
   const f=state.coverage, today=localToday();
   const all=buildCoverage(state.companies,state.profiles,state.activities,state.tasks,{today,threshold:f.threshold});
   const scoped=filterCoverage(all,{...f,status:'all'}),rows=filterCoverage(all,f);
-  const owners=[...new Set(state.companies.map(c=>plain(c.owner)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ko'));
+  const owners=ownerChoices();
   const labels=Object.fromEntries(COVERAGE_STATES),groups=Object.fromEntries(BUSINESS_GROUPS);
   const tones={review:'warning',uncontacted:'outline',stale:'warning',followup:'bad',healthy:'ok',waiting:'outline'};
   return `${heading('고객 관리 현황','누가 관리되고 있고, 어떤 고객에게 후속 연락이 필요한지 확인합니다.',btn('coverage-accounts','업체 상세 보기','secondary'))}
@@ -363,14 +373,16 @@ function renderTimeline(){
 }
 
 function renderAccounts(){
+  if(state.detailOpen&&cc(state.selectedId))return `${heading(cc(state.selectedId).name,'업체 정보와 활동 이력을 넓게 확인합니다.',btn('back-accounts','← 이전 목록으로','secondary'))}<section class="panel company-detail-panel">${renderCompanyDetail()}</section>`;
+  if(state.accountView==='coverage')return accountTabs()+renderCoverage();
+  if(state.accountView==='home')return accountTabs()+renderHome();
   const list=activeAccountList(),f=state.filters,today=localToday();
   const scopedCompanies=state.companies.filter(c=>f.kind==='all'||(f.kind==='partner'?c.kind==='협력사':c.kind!=='협력사'));
   const scopedIds=new Set(scopedCompanies.map(cid));
   const st=groupStats(scopedCompanies,state.profiles,state.opportunities.filter(o=>scopedIds.has(o.companyId)),state.tasks);
   const overdue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===0).length;
   const todayDue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===1).length;
-  return `${heading('고객사 중심 영업관리','담당자·미팅 이력·다음 행동을 한 화면에서 확인합니다.',
-    `${state.canWrite?btn('new-meeting','＋ 미팅 이력','primary'):''}${state.canWrite?btn('new-task','＋ 후속 업무','secondary'):''}`)}
+  return `${heading('고객 관리','업체를 선택해 정보와 영업활동을 확인하세요.',state.canWrite?btn('new-company','＋ 신규 업체','primary'):'')}${accountTabs()}
   <div class="stats crm-stats-compact">
     ${stat('등록된 업체',st.total+'개',f.kind==='partner'?'협력사 기준':f.kind==='all'?'고객사·협력사 전체':'고객사 기준','▦')}
     ${stat('후속 업무 대상',st.follow+'개','기한 미정 포함','◷')}
@@ -379,11 +391,12 @@ function renderAccounts(){
   </div>
   <div class="account-layout">
     <section class="panel">
-      <div class="panel-head"><div><h2 class="panel-title">업체 목록</h2><p class="panel-subtitle">${list.length}개 업체 · 선택하면 오른쪽 상세 변경</p></div>
+      <div class="panel-head"><div><h2 class="panel-title">업체 목록</h2><p class="panel-subtitle">${list.length}개 업체 · 선택하면 상세 화면으로 이동</p></div>
         ${btn('open-import','⇩ 엑셀 비교','secondary')}</div>
       <div class="toolbar crm-account-toolbar">
         <input id="f-q" class="field search-input" placeholder="업체명 · 담당자 · 전화 · 이메일 · 니즈 검색" value="${attr(f.q)}" aria-label="업체 및 연락처 통합 검색">
         <select id="f-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],f.kind,'대상 선택')}</select>
+        <select id="f-owner" class="select" aria-label="디밀리언 영업 담당자 필터">${options(ownerChoices(),f.owner||'','영업 담당 전체')}</select>
         <select id="f-sort" class="select" aria-label="정렬">${options([['priority','우선 연락순'],['action','다음 일정순'],['name','업체명순'],['grade','등급순'],['opportunities','영업 기회순']],f.sort,'정렬')}</select>
         <select id="f-grade" class="select" aria-label="고객사 등급">${options(['A','B','C'],f.grade,'등급 전체')}</select>
         <select id="f-market" class="select" aria-label="지원공고사업분류">${options(categoryChoices(),f.market,'사업분류 전체')}</select>
@@ -404,7 +417,7 @@ function renderAccounts(){
           aria-current="${selected?'true':'false'}" aria-label="${attr(c.name)} 업체 상세">
           <td>
             <div class="crm-account-name"><strong class="company-name">${esc(c.name||'업체명 없음')}</strong>${tag(companyKind(c),companyKind(c)==='협력사'?'warning':'outline')}${tag(grade,grade.toLowerCase())}</div>
-            <div class="crm-account-subline">${esc(c.industry||c.bizDetail||'업종 미입력')}${c.region?' · '+esc(c.region):''}</div>
+            <div class="crm-account-subline">${esc(c.industry||c.bizDetail||'업종 미입력')}${c.region?' · '+esc(c.region):''} · 영업 담당 ${esc(c.owner||'미지정')}</div>
             ${state.canWrite?`<div class="crm-account-person" title="${attr(contact.person||'')}" >담당 · ${esc(contact.person||'미등록')}</div>
               <div class="crm-account-contacts">
                 ${contact.phone?`<span title="${attr(contact.phone)}">☎ ${contactDisplay(contact.phone,'phone')}</span>`:''}
@@ -420,9 +433,8 @@ function renderAccounts(){
         </tr>`;
       }).join('')||`<tr><td colspan="3">${empty('검색 조건에 맞는 업체가 없습니다.','검색어 또는 필터를 확인해 주세요.')}</td></tr>`}
       </tbody></table></div>
-      <div class="sort-note">연락처는 권한이 있는 사용자에게만 표시·검색됩니다. 업체별 전화·메일 전체 내역은 오른쪽 상세에서 확인할 수 있습니다.</div>
+      <div class="sort-note">업체를 선택하면 전체 상세 화면이 열립니다. 이전 목록으로 돌아오면 검색 조건이 유지됩니다.</div>
     </section>
-    <aside class="panel">${renderCompanyDetail()}</aside>
   </div>`;
 }
 function taskRow(task,kind='active',index=0){
@@ -843,6 +855,25 @@ async function ensureCategory(raw){
   state.categories.push({_id:id,...data});
   return name;
 }
+function companyModal(onCreated){
+  if(!state.canWrite)return toast('수정 권한이 없습니다.',true);
+  showModal('신규 업체 등록','업체만 먼저 등록합니다. 통화·미팅 기록은 별도로 승인해야 저장됩니다.',
+    `<label>업체명<input name="companyName" maxlength="160" required autocomplete="off"></label>
+    <div class="form-row"><label>업체 구분<select name="kind"><option>고객사</option><option>협력사</option></select></label><label>지역<input name="region" maxlength="100"></label></div>
+    <label>업종·주요 사업<input name="industry" maxlength="200"></label>${ownerFields()}`,
+    async fd=>{
+      const name=safeText(fd.get('companyName'));
+      if(!name||name.length>160)throw new Error('업체명은 1~160자로 입력해 주세요.');
+      const existing=state.companies.find(c=>normalizeCompanyName(c.name)===normalizeCompanyName(name));
+      if(existing)throw new Error(`이미 등록된 업체입니다: ${existing.name}. 기존 업체를 선택해 주세요.`);
+      const owner=await chosenOwner(fd),id=uid(),now=new Date().toISOString();
+      const company={_id:id,name,kind:fd.get('kind')==='협력사'?'협력사':'고객사',owner,region:safeText(fd.get('region')),industry:safeText(fd.get('industry')),createdAt:now,updatedAt:now};
+      const {_id,...data}=company;await saveDoc('companies',id,data);state.companies.push(company);
+      if(typeof onCreated==='function')onCreated(company);
+      else {state.detailOpen=true;state.returnScreen='accounts';state.selectedId=id;state.companyTab='overview';state.screen='accounts';}
+      return {message:state.demo?'신규 업체를 시연 화면에 추가했습니다. (서버 저장 없음)':'신규 업체를 등록했습니다. 활동 기록은 별도로 승인해 주세요.'};
+    });
+}
 function profileModal(){
   const c=cc(state.selectedId);if(!c)return toast('업체를 선택해 주세요.',true);
   if(!state.canWrite)return toast('수정 권한이 없습니다.',true);
@@ -852,6 +883,7 @@ function profileModal(){
   showModal(`${c.name} · 고객정보 정리`,'업체 구분은 기본정보에, 나머지 영업 분류는 CRM 프로필에 저장합니다.',
     `<div class="form-row">${field('업체 구분','companyKind',companyKind(c),{select:[['고객사','고객사'],['협력사','협력사']]})}
       ${field('고객사 등급','accountGrade',p.accountGrade,{select:['A','B','C']})}</div>
+    ${ownerFields(c.owner||'')}
     <div class="crm-category-helper">지원공고사업분류는 복수 선택할 수 있어요. 업체별로 체크된 항목만 저장됩니다.</div>
     <div class="crm-categories-box">
       <div class="crm-category-title">지원공고사업분류 <span class="muted tiny">현재 ${programCategories(p).length}개 선택</span></div>
@@ -886,9 +918,10 @@ function profileModal(){
       patch.market2027=patch.programCategories[0]||''; // Legacy compatibility only.
       patch.updatedAt=new Date().toISOString();
       const exists=!!state.profiles[cid(c)]?._id;
-      if(nextKind!==companyKind(c)){
-        await saveDoc('companies',cid(c),{kind:nextKind,updatedAt:patch.updatedAt},true);
-        c.kind=nextKind;c.updatedAt=patch.updatedAt;
+      const owner=await chosenOwner(fd);
+      if(nextKind!==companyKind(c)||owner!==(c.owner||'')){
+        await saveDoc('companies',cid(c),{kind:nextKind,owner,updatedAt:patch.updatedAt},true);
+        c.kind=nextKind;c.owner=owner;c.updatedAt=patch.updatedAt;
       }
       await saveDoc('crm2Profiles',cid(c),patch,exists);
       state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
@@ -1284,13 +1317,16 @@ function applyImportSession(){
 document.addEventListener('click',async e=>{
   const closer=e.target.closest('[data-close]');if(closer){closeModal();return;}
   const nav=e.target.closest('[data-nav]');
-  if(nav){if(state.screen==='agent'&&nav.dataset.nav!=='agent')agent.stop();state.screen=nav.dataset.nav;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
+  if(nav){if(state.screen==='agent'&&nav.dataset.nav!=='agent')agent.stop();state.screen=nav.dataset.nav;state.detailOpen=false;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
   if(e.target.closest('a[href^="tel:"], a[href^="mailto:"]'))return;
   const a=e.target.closest('[data-action]');if(!a)return;
   const action=a.dataset.action,id=a.dataset.id;
   try{
-    if(action==='coverage-status'){state.coverage.status=a.dataset.status;render();}
-    else if(action==='coverage-accounts'){state.screen='accounts';render();}
+    if(action==='account-view'){state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';render();}
+    else if(action==='back-accounts'){state.detailOpen=false;state.screen=state.returnScreen||'accounts';render();const list=$main.querySelector('.table-scroll');if(list)list.scrollTop=state.accountScroll;}
+    else if(action==='new-company')companyModal();
+    else if(action==='coverage-status'){state.coverage.status=a.dataset.status;render();}
+    else if(action==='coverage-accounts'){state.detailOpen=false;state.accountView='list';state.screen='accounts';render();}
     else if(action==='select-timeline'){state.selectedId=id;render();}
     else if(action==='select-company')selectCompany(id,true);
     else if(action==='go-company')selectCompany(id,false);
@@ -1366,7 +1402,7 @@ document.addEventListener('change',async e=>{
     state.importOptions[id==='import-replace-contacts'?'replaceContacts':'includeTasks']=e.target.checked;
     invalidateImportBackup();render();return;
   }
-  const filters={'f-kind':'kind','f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
+  const filters={'f-owner':'owner','f-kind':'kind','f-grade':'grade','f-market':'market','f-group':'group','f-sort':'sort','f-task':'hasTask'};
   if(filters[id]){
     state.filters[filters[id]]=id==='f-task'?e.target.checked:e.target.value;
     render();

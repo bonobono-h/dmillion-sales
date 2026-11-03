@@ -357,3 +357,10 @@
 .perf-unassigned{display:grid;gap:6px;margin-top:10px}.perf-unassigned span{display:flex;align-items:center;justify-content:space-between;gap:8px;background:#fff;border:1px solid #f3e1b8;border-radius:8px;padding:6px 6px 6px 10px}
 .perf-goal-row{align-items:end}
 @media(max-width:780px){.perf-opp{flex-direction:column;align-items:flex-start}}
+.account-layout{grid-template-columns:minmax(0,1fr)!important}
+.company-detail-panel .detail-scroll{max-height:none;overflow:visible}
+.company-detail-panel .detail-name{font-size:30px}
+.company-detail-panel .text-body,.company-detail-panel .info-grid{font-size:14px}
+.company-detail-panel .panel-body{padding:26px 30px}
+.account-view-tabs{margin-bottom:20px}
+@media(max-width:650px){.company-detail-panel .panel-body{padding:18px}.company-detail-panel .detail-name{font-size:24px}.heading-actions{flex-wrap:wrap}}
