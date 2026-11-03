@@ -5,6 +5,15 @@ import {weekRange,pickGoal,buildPerformance,appendStageHistory,goalDocId} from '
 const goal={kind:'salesGoal',label:'2026 4분기',start:'2026-10-01',end:'2026-12-31',revenueTarget:2700000000,
   programs:[{name:'스마트공장',count:3,amountPerDeal:400000000},{name:'제조로봇',count:3,amountPerDeal:500000000}]};
 
+test('six independent programs retain targets and deal attribution without truncation',()=>{
+  const names=['스마트공장','제조 AI 특화','제조로봇 도입','자동화 공정 구축','추가 사업 A','추가 사업 B'];
+  const expanded={...goal,revenueTarget:0,programs:names.map(name=>({name,count:2,amountPerDeal:100000000}))};
+  const result=buildPerformance({goal:expanded,opportunities:names.map((program,i)=>({_id:String(i),program,stage:'won',estimatedAmount:100000000})),today:'2026-11-03'});
+  assert.equal(result.programs.length,6);
+  assert.equal(result.totals.targetCount,12);
+  assert.ok(result.programs.every(p=>p.wonCount===1&&p.targetAmount===200000000));
+});
+
 test('week runs Monday to Sunday in Seoul time',()=>{
   assert.deepEqual(weekRange('2026-11-03'),{start:'2026-11-02',end:'2026-11-08'});
   assert.deepEqual(weekRange('2026-11-08'),{start:'2026-11-02',end:'2026-11-08'});

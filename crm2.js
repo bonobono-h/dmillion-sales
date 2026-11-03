@@ -1,12 +1,12 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-workspaces-2';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-goals-5';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261103-workspaces-2';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261103-goals-5';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -656,7 +656,7 @@ function renderManager(){
 /* ---------------- 영업 실적 (목표 대비) ---------------- */
 function currentGoal(){return pickGoal(state.goals,localToday());}
 function programChoices(currentValue=''){
-  const names=[...(currentGoal()?.programs||[]).map(p=>p.name),'스마트공장','제조로봇','제조AI','자동화(자체)','기타'];
+  const names=[...(currentGoal()?.programs||[]).map(p=>p.name),'스마트공장','제조 AI 특화','제조로봇 도입','자동화 공정 구축','제조로봇','제조AI','자동화(자체)','기타'];
   if(currentValue)names.push(currentValue);
   const out=[],seen=new Set();
   for(const raw of names){const n=safeText(raw),k=n.normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase('ko');if(n&&!seen.has(k)){out.push(n);seen.add(k);}}
@@ -720,23 +720,29 @@ function renderPerformance(){
 }
 function stageRank(s){return {won:5,negotiation:4,proposal:3,qualification:2,discovery:1,hold:0,lost:-1}[s]??0;}
 function timelineDayLocal(v){if(!v)return '';const raw=String(v);if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw;const d=new Date(raw);return Number.isNaN(d.getTime())?'':new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).format(d);}
+function goalProgramRow(p={},i=0){return `<div class="goal-program-entry"><div class="goal-program-heading"><strong>사업 ${i+1}</strong><button type="button" class="btn ghost" data-action="remove-goal-program" aria-label="사업 ${i+1} 항목 삭제">항목 삭제</button></div><div class="form-row perf-goal-row"><label>사업명 <input name="pname" maxlength="40" value="${attr(p.name||'')}" placeholder="추가 사업명 입력"></label><div class="form-row"><label>목표 건수 <input name="pcount" type="number" min="0" step="1" value="${attr(p.count??'')}"></label><label>건당 금액(억원) <input name="pamount" type="number" min="0" step="0.1" value="${attr(p.amountPerDeal!==''&&p.amountPerDeal!=null?p.amountPerDeal/100000000:'')}"></label></div></div></div>`;}
 function goalModal(){
   if(!state.isAdmin)return toast('목표는 관리자만 바꿀 수 있습니다.',true);
   const g=currentGoal();
   const today=localToday(),q=Math.floor((Number(today.slice(5,7))-1)/3);
   const qStart=`${today.slice(0,4)}-${String(q*3+1).padStart(2,'0')}-01`;
   const qEndDate=new Date(Date.UTC(Number(today.slice(0,4)),q*3+3,0)).toISOString().slice(0,10);
-  const rows=(g?.programs?.length?g.programs:[{name:'스마트공장',count:'',amountPerDeal:''},{name:'제조로봇',count:'',amountPerDeal:''}]).concat([{name:'',count:'',amountPerDeal:''}]).slice(0,4);
+  const rows=g?.programs?.length?g.programs.map(p=>({...p})):['스마트공장','제조 AI 특화','제조로봇 도입','자동화 공정 구축'].map(name=>({name,count:'',amountPerDeal:''}));
+  while(rows.length<5)rows.push({name:'',count:'',amountPerDeal:''});
   showModal(g?'영업 목표 수정':'영업 목표 설정','사업별 목표 건수와 건당 금액을 넣으면 실적 화면이 이 기준으로 계산됩니다.',
     `<label>목표 이름 <input name="label" required maxlength="60" value="${attr(g?.label||`${today.slice(0,4)}년 ${q+1}분기 영업 목표`)}"></label>
     <div class="form-row"><label>시작일 <input type="date" name="start" required value="${attr(g?.start||qStart)}"></label><label>종료일 <input type="date" name="end" required value="${attr(g?.end||qEndDate)}"></label></div>
-    ${rows.map((p,i)=>`<div class="form-row perf-goal-row"><label>사업 ${i+1} <input name="pname" maxlength="40" value="${attr(p.name||'')}" placeholder="예: 스마트공장"></label>
-      <div class="form-row"><label>목표 건수 <input name="pcount" type="number" min="0" step="1" value="${attr(p.count??'')}"></label><label>건당 금액(억원) <input name="pamount" type="number" min="0" step="0.1" value="${attr(p.amountPerDeal?p.amountPerDeal/100000000:'')}"></label></div></div>`).join('')}
+    <div id="goalProgramRows">${rows.map(goalProgramRow).join('')}</div>
+    <button type="button" class="btn secondary" data-action="add-goal-program">＋ 사업 항목 추가</button><small>사업별로 한 줄씩 입력하세요. 추가 사업은 필요할 때 늘릴 수 있습니다. 이름이 없는 빈 항목은 저장하지 않습니다.</small>
     <label>매출 목표(억원) <input name="revenue" type="number" min="0" step="0.1" value="${attr(g?.revenueTarget?g.revenueTarget/100000000:'')}"><small>비우면 사업별 건수 × 건당 금액 합계로 계산합니다.</small></label>`,
     async fd=>{
       const names=fd.getAll('pname'),counts=fd.getAll('pcount'),amts=fd.getAll('pamount');
-      const programs=names.map((n,i)=>({name:safeText(n),count:Number(counts[i]||0),amountPerDeal:Math.round(Number(amts[i]||0)*100000000)})).filter(p=>p.name&&p.count>0);
-      if(!programs.length)throw new Error('사업 이름과 목표 건수를 하나 이상 넣어 주세요.');
+      if(names.some((n,i)=>!safeText(n)&&(Number(counts[i]||0)!==0||Number(amts[i]||0)!==0)))throw new Error('금액이나 건수를 입력한 항목에는 사업명을 넣어 주세요.');
+      const programs=names.map((n,i)=>({name:safeText(n),count:Number(counts[i]||0),amountPerDeal:Math.round(Number(amts[i]||0)*100000000)})).filter(p=>p.name);
+      if(!programs.some(p=>p.count>0))throw new Error('사업 이름과 목표 건수를 하나 이상 넣어 주세요.');
+      if(programs.some(p=>!Number.isSafeInteger(p.count)||p.count<0||!Number.isSafeInteger(p.amountPerDeal)||p.amountPerDeal<0))throw new Error('목표 건수와 금액을 확인해 주세요.');
+      const normalizedNames=programs.map(p=>p.name.normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase('ko'));
+      if(new Set(normalizedNames).size!==programs.length)throw new Error('같은 사업명이 중복되어 있습니다. 한 항목으로 정리해 주세요.');
       const start=safeText(fd.get('start')),end=safeText(fd.get('end'));
       if(!start||!end||end<start)throw new Error('기간을 확인해 주세요.');
       const rev=fd.get('revenue');
@@ -1363,6 +1369,8 @@ document.addEventListener('click',async e=>{
     else if(action==='new-opportunity')opportunityModal();
     else if(action==='edit-opportunity')opportunityModal(id);
     else if(action==='edit-goal')goalModal();
+    else if(action==='add-goal-program'){const rows=$('goalProgramRows');if(rows){rows.insertAdjacentHTML('beforeend',goalProgramRow({},rows.children.length));rows.lastElementChild.querySelector('input')?.focus();}}
+    else if(action==='remove-goal-program'){const row=a.closest('.goal-program-entry');row?.remove();$('goalProgramRows')?.querySelectorAll('.goal-program-entry').forEach((row,i)=>{row.querySelector('strong').textContent=`사업 ${i+1}`;row.querySelector('button').setAttribute('aria-label',`사업 ${i+1} 항목 삭제`);});}
     else if(action==='new-task')taskModal();
     else if(action==='convert-legacy-actions')await convertLegacyActions();
     else if(action==='complete-task')await completeTask(id);

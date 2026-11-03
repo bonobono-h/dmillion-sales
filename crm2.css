@@ -368,3 +368,5 @@
 .timeline-layout{grid-template-columns:minmax(0,1fr)!important}
 .workspace-tabs{margin-bottom:20px}
 .company-detail-panel .timeline-stage-flow{overflow-x:auto}
+
+#goalProgramRows{display:grid;gap:14px}.goal-program-entry{border:1px solid #e2e7ef;padding:12px;border-radius:10px}.goal-program-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.goal-program-heading strong{font-size:12px;color:#65738b}.goal-program-heading button{min-height:28px;padding:4px 8px;font-size:11px}
