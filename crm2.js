@@ -9,6 +9,7 @@ import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,savePr
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
 import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
+import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -81,6 +82,7 @@ const state={
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
   calendar:{events:[],sync:null,error:'',period:'week',attendee:''},
+  recent:{period:'week',type:'all',limit:8},docUpdatedAt:{},
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
@@ -121,6 +123,7 @@ async function loadDemo(){
   state.companies=structuredClone(demoData.companies);
   state.profiles=structuredClone(demoData.profiles);
   state.activities=structuredClone(demoData.activities);
+  ['demo-c1','demo-c2','demo-c3','demo-c5'].forEach((companyId,index)=>state.activities.push({_id:'demo-recent-'+index,companyId,type:'메일',status:'완료',date:seoulDay(),createdAt:new Date(Date.now()-index*60000).toISOString(),title:'지원사업 검토 안내 메일 발송 (데모)',summary:'고객사에 검토 내용을 안내하고 필요한 자료와 일정 회신을 요청했습니다. 가상 기록입니다.',nextAction:'검토 의견·가능 일정 회신 확인'}));
   state.projects=structuredClone(demoData.projects);
   state.opportunities=structuredClone(demoData.opportunities);
   state.tasks=structuredClone(demoData.tasks);
@@ -132,7 +135,7 @@ async function loadDemo(){
 }
 async function getDocs(db,path) {
   const snap=await db.collection(path).get();
-  return snap.docs.map(d=>({_id:d.id,...(d.data()||{})}));
+  return snap.docs.map(d=>{if(d.updatedAt)state.docUpdatedAt[`${path}/${d.id}`]=d.updatedAt;return {_id:d.id,...(d.data()||{})};});
 }
 async function loadLive(){
   if(!window.claude){throw new Error('기존 영업관리의 로그인 연결을 찾지 못했습니다. 파일을 기존 저장소 루트에 넣었는지 확인하세요.');}
@@ -407,6 +410,7 @@ function renderAccounts(){
     ${stat('오늘 · 기한 경과',(todayDue+overdue)+'개',`오늘 ${todayDue} · 경과 ${overdue}`,'!')}
     ${stat('진행 중 영업 기회',st.openOpps+'건','개별 등록 건만 집계','◇')}
   </div>
+  ${renderRecentUpdates({...state,companies:scopedCompanies},state.recent)}
   <div class="account-layout">
     <section class="panel">
       <div class="panel-head"><div><h2 class="panel-title">업체 목록</h2><p class="panel-subtitle">${list.length}개 업체 · 선택하면 상세 화면으로 이동</p></div>
@@ -509,7 +513,7 @@ function renderNeedsView(company,profile) {
 function meetingEntry(a){
   const when=activityDate(a),title=a.title||a.type||'미팅';
   const summary=a.summary||a.report?.purpose||a.purpose||'핵심 내용 미입력';
-  return `<article class="crm-meeting-entry">
+  return `<article class="crm-meeting-entry" data-activity-id="${attr(cid(a))}">
     <div class="crm-meeting-entry-top"><span>${fmtDateTime(when)} · ${esc(a.type||'미팅')}</span>
       ${tag(a.status||'완료','outline')}</div>
     <strong>${esc(title)}</strong>
@@ -594,6 +598,7 @@ function renderHome(){
   const priorities=state.companies.filter(c=>['모르겠음 — 담당자 확인','기록 없음 — 메일 확보 후 일괄'].includes(state.profiles[cid(c)]?.outreachBucket));
   return `${heading('오늘의 영업','고객사 중심으로 오늘 연락할 업체와 후속 업무를 정리합니다.',btn('new-task','＋ 업무 추가','primary'))}
   <div class="stats">${stat('후속 업무',all.length+'건','기존 다음 액션 포함','◷')}${stat('기한 지난 업무',overdue.length+'건','미완료 기준','!')}${stat('일정 미정',undated.length+'건','담당자 확인 필요','?')}${stat('관계 확인 필요',priorities.length+'개','엑셀 기준 영업 분류','▦')}</div>
+  ${renderRecentUpdates({...state,companies:state.companies.filter(c=>c.kind!=='협력사')},state.recent)}
   ${renderCalendar({...state.calendar,demo:state.demo})}
   <div class="two-cols">
     <section class="panel"><div class="panel-head"><div><h2 class="panel-title">다음 영업 행동</h2><p class="panel-subtitle">마감일 빠른 순서 · ${all.length}건</p></div></div>
@@ -1357,6 +1362,12 @@ document.addEventListener('click',async e=>{
   try{
     if(action==='workspace-view'){if(state.screen==='agent')agent.stop();state.screen=a.dataset.screen;state.detailOpen=false;render();if(state.screen==='intake'){await intake.load();render();}}
     else if(action==='account-view'){state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';render();}
+    else if(action==='recent-more'){state.recent.limit+=8;render();}
+    else if(action==='recent-open'){
+      selectCompany(id,false);state.companyTab=detailTabs.some(([key])=>key===a.dataset.tab)?a.dataset.tab:'overview';render();
+      const record=state.companyTab==='activities'?[...$main.querySelectorAll('[data-activity-id]')].find(el=>el.dataset.activityId===a.dataset.record):null;
+      if(record){record.classList.add('crm-recent-focus');record.scrollIntoView({block:'center',behavior:'smooth'});}
+    }
     else if(action==='back-accounts'){state.detailOpen=false;state.screen=state.returnScreen||'accounts';render();const list=$main.querySelector('.timeline-list-scroll,.table-scroll');if(list)list.scrollTop=state.accountScroll;}
     else if(action==='new-company')companyModal();
     else if(action==='coverage-status'){state.coverage.status=a.dataset.status;render();}
@@ -1410,6 +1421,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('change',async e=>{
   if(e.target.closest('#dialogForm [data-progress-choice]')||['meetingType','meetingStatus','companyId'].includes(e.target.name)&&e.target.closest('#dialogForm'))syncProgressFields(state,e.target.closest('form'),['meetingType','companyId','progressYear'].includes(e.target.name));
   const id=e.target.id;
+  if(id==='recent-period'||id==='recent-type'){state.recent[id==='recent-period'?'period':'type']=e.target.value;state.recent.limit=8;render();return;}
   if(id==='calendar-period'||id==='calendar-attendee'){state.calendar[id==='calendar-period'?'period':'attendee']=e.target.value;render();return;}
   if(id==='detail-progress-year'){state.timeline.year=e.target.value;updateCompanyDetailOnly();return;}
   if(id.startsWith('coverage-')){
@@ -1486,3 +1498,4 @@ $('refreshBtn').onclick=refresh;
 $('mobileMenu').onclick=()=>document.querySelector('.sidebar').classList.toggle('open');
 
 boot();
+
