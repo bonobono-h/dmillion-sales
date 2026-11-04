@@ -46,9 +46,15 @@
   .dm-admin table{border-collapse:collapse;width:100%;font-size:13px}
   .dm-admin th,.dm-admin td{border-bottom:1px solid var(--line,#e3e7ec);padding:7px 6px;text-align:left}
   .dm-admin td input,.dm-admin td select{font:inherit;padding:5px 7px;border:1px solid var(--line,#e3e7ec);border-radius:6px;background:var(--surface,#fff);color:inherit;max-width:160px}
+  .dm-admin td .actions{display:flex;gap:6px;flex-wrap:wrap}.dm-admin td .danger{color:var(--bad,#b3261e);border-color:currentColor;background:transparent}
+  .dm-admin td time{white-space:nowrap;color:var(--ink2,#6b7480)}
   .dm-admin .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
   .dm-admin .note{font-size:12.5px;color:var(--ink2,#6b7480);line-height:1.6}
   .dm-admin .scroll{overflow-x:auto}
+  .dm-member-layer{position:fixed;inset:0;z-index:10001;background:rgba(11,23,48,.48);display:flex;align-items:center;justify-content:center;padding:16px}
+  .dm-member-panel{background:#fff;color:#1b2740;border-radius:16px;padding:24px;width:min(880px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;margin:0;box-shadow:0 18px 60px rgba(0,0,0,.2)}
+  .dm-member-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.dm-member-heading h2{margin:0;font-size:20px}.dm-member-panel .scroll table{min-width:590px}.dm-member-panel .btn{min-height:40px}.dm-member-panel .note{margin:0}
+  @media(max-width:600px){.dm-member-panel{padding:18px}.dm-member-heading h2{font-size:18px}}
   `;
   const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
@@ -154,8 +160,28 @@
     host.querySelector('.dm-pend')?.remove();
     if (!count) return;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'dm-pend'; b.textContent = `승인 대기 ${count}명`;
-    b.onclick = () => { location.href = 'crm2.html?view=admin'; };
+    b.onclick = openPendingMembers;
     host.prepend(b);
+  }
+
+  async function openPendingMembers() {
+    if (me?.role !== 'admin' || document.querySelector('.dm-member-layer')) return;
+    const trigger = document.querySelector('.dm-pend'), layer = document.createElement('div');
+    layer.className = 'dm-member-layer';
+    layer.innerHTML = `<section class="dm-member-panel dm-admin" role="dialog" aria-modal="true" aria-labelledby="dmPendingTitle"><div class="dm-member-heading"><h2 id="dmPendingTitle">가입 승인 대기</h2><button class="btn" type="button" data-member-close aria-label="가입 신청 목록 닫기">닫기 ×</button></div><p class="note">신청자를 확인한 뒤 권한을 선택해 승인하세요. 거절하면 해당 가입 계정이 삭제됩니다.</p><div class="row"><button class="btn" type="button" data-member-refresh>신청 목록 새로고침</button></div><div class="scroll" data-member-list aria-live="polite">신청 목록을 불러오는 중…</div></section>`;
+    document.body.appendChild(layer);
+    const panel = layer.querySelector('[role="dialog"]'), list = layer.querySelector('[data-member-list]');
+    const close = () => { document.removeEventListener('keydown', onKey); layer.remove(); if (trigger?.isConnected) trigger.focus(); };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Tab') { const focusable = [...panel.querySelectorAll('button,select')].filter(x => !x.disabled), first = focusable[0], last = focusable[focusable.length - 1]; if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); } else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); } }
+    };
+    document.addEventListener('keydown', onKey);
+    layer.querySelector('[data-member-close]').onclick = close;
+    layer.onclick = e => { if (e.target === layer) close(); };
+    layer.querySelector('[data-member-refresh]').onclick = async e => { e.currentTarget.disabled = true; try { await peopleTable(list, {pendingOnly:true}); const h = document.querySelector('.dm-me'); if (h) await pendingChip(h); } finally { layer.querySelector('[data-member-refresh]').disabled = false; } };
+    layer.querySelector('[data-member-close]').focus();
+    await peopleTable(list, {pendingOnly:true});
   }
 
   function changePw() {
@@ -285,9 +311,11 @@
     isOwner: async () => me.role === 'admin',
     canEdit: async () => me.role === 'admin',
     async profiles(ids) {
-      if (!profileCache) {
-        const { data } = await sb.from('members').select('user_id,name,login');
-        profileCache = {}; (data || []).forEach(r => { profileCache[r.user_id] = { name: r.name || r.login }; });
+      if (!profileCache) profileCache = {};
+      const valid = [...new Set(ids.filter(id => UUID.test(id) && !profileCache[id]))];
+      if (valid.length) {
+        const { data, error } = await sb.functions.invoke('crm-member-admin', { body: { action: 'profiles', userIds: valid } });
+        if (!error) (data?.profiles || []).forEach(r => { profileCache[r.user_id] = { name: r.name || '담당자' }; });
       }
       const out = {}; for (const id of ids) if (UUID.test(id) && profileCache[id]) out[id] = profileCache[id];
       return out;
@@ -347,8 +375,7 @@
     const mine = `<h3>내 계정</h3><div class="row"><span>${esc(me.name)} · ${esc(me.login)} · ${ROLE_KO[me.role] || ''}</span><button class="btn" type="button" id="dmPw">비밀번호 변경</button></div>`;
     if (me.role !== 'admin') { box.innerHTML = mine; box.querySelector('#dmPw').onclick = changePw; return; }
     box.innerHTML = mine + `<h3>가입 신청 · 회원 관리</h3><button class="btn" type="button" id="dmPeopleRefresh">신청 목록 새로고침</button><div class="scroll" id="dmPeople">불러오는 중…</div>
-      <div class="note">각자 로그인 화면의 <b>처음이면 가입하기</b>로 가입하면 여기에 '승인 대기'로 나타납니다. 본인이 맞는지 확인하고 권한(영업담당·보기 전용)을 골라 <b>저장</b>하세요.
-      승인하지 않을 사람은 '승인 대기'로 두면 아무것도 볼 수 없습니다. 계정을 아예 지우려면 Supabase → Authentication → Users에서 삭제합니다.</div>
+      <div class="note">승인 대기자는 권한을 선택한 뒤 승인하세요. <b>거절</b>하면 해당 가입 계정이 삭제됩니다. 승인된 회원은 관리자·영업담당·보기 전용 사이에서 권한을 바꿀 수 있습니다. 모든 변경은 서버에서 관리자 여부를 다시 확인합니다.</div>
       <h3>데이터</h3>
       <div class="row"><button class="btn" type="button" id="dmBackup">전체 백업 내려받기 (JSON)</button>
       <label class="btn" style="cursor:pointer">가져오기 (JSON)<input type="file" id="dmImport" accept=".json,application/json" hidden></label><span class="note" id="dmImportMsg"></span></div>
@@ -359,23 +386,40 @@
     box.querySelector('#dmBackup').onclick = backup;
     box.querySelector('#dmImport').onchange = e => importFile(e.target.files[0], box.querySelector('#dmImportMsg'));
   }
-  async function peopleTable(el) {
-    const { data: rows, error } = await sb.from('members').select('user_id,login,name,role,created_at').order('created_at');
-    const data = (rows || []).sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
-    if (error) { el.textContent = '명단을 불러오지 못했습니다.'; return; }
-    el.innerHTML = `<p class="note">승인 대기 ${data.filter(r => r.role === 'pending').length}명 · 전체 ${data.length}명</p><table><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th></th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}" class="${r.role === 'pending' ? 'pend' : ''}">
-      <td>${esc(r.login)}</td><td><input value="${esc(r.name)}" aria-label="이름"></td>
-      <td><select aria-label="권한">${Object.entries(ROLE_KO).map(([k, v]) => `<option value="${k}" ${r.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-      <td><button class="btn" type="button">저장</button></td></tr>`).join('')}</tbody></table>`;
-    el.querySelectorAll('tr[data-u]').forEach(tr => tr.querySelector('button').onclick = async () => {
-      const name = tr.querySelector('input').value.trim(), role = tr.querySelector('select').value;
-      if (tr.dataset.u === me.id && role !== 'admin' && !confirmSelfDemote()) return;
-      const { error } = await sb.from('members').update({ name, role }).eq('user_id', tr.dataset.u);
-      profileCache = null; if (!error) { tr.classList.toggle('pend', role === 'pending'); const h = document.querySelector('.dm-me'); h && pendingChip(h); }
-      alertless(error ? '저장하지 못했습니다' : `${name} · ${ROLE_KO[role]}로 저장했습니다`);
+  async function memberAdmin(body) {
+    const { data, error } = await sb.functions.invoke('crm-member-admin', { body });
+    if (error) {
+      let message = '회원관리 서버에 연결하지 못했습니다.';
+      try { message = (await error.context?.clone().json())?.error || message; } catch {}
+      throw new Error(message);
+    }
+    if (data?.error) throw new Error(data.error);
+    return data;
+  }
+  async function peopleTable(el, {pendingOnly=false} = {}) {
+    let rows;
+    try { rows = (await memberAdmin({ action: 'list' })).members || []; }
+    catch { el.textContent = '회원 명단을 불러오지 못했습니다.'; return; }
+    const data = rows.filter(r => !pendingOnly || r.role === 'pending').sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
+    if (!data.length) { el.innerHTML = '<p class="note">승인 대기 신청이 없습니다.</p>'; return; }
+    const options = r => ['sales','view','admin'].map(k => `<option value="${k}" ${r.role === k || (r.role === 'pending' && k === 'sales') ? 'selected' : ''}>${ROLE_KO[k]}</option>`).join('');
+    el.innerHTML = `<p class="note">승인 대기 ${data.filter(r => r.role === 'pending').length}명${pendingOnly?'':` · 전체 ${data.length}명`}</p><table><thead><tr><th>아이디</th><th>이름</th><th>신청·가입일</th><th>권한</th><th>처리</th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}" data-role="${esc(r.role)}" data-name="${esc(r.name)}" class="${r.role === 'pending' ? 'pend' : ''}">
+      <td>${esc(r.login)}</td><td>${esc(r.name)}</td><td><time>${esc(new Date(r.created_at).toLocaleDateString('ko-KR'))}</time></td>
+      <td>${r.user_id === me.id ? `<b>${esc(ROLE_KO[r.role])}</b>` : `<select aria-label="${esc(r.name)} 권한">${options(r)}</select>`}</td>
+      <td><div class="actions">${r.user_id === me.id ? '<span class="note">내 계정</span>' : r.role === 'pending' ? '<button class="btn" type="button" data-act="approve">승인</button><button class="btn danger" type="button" data-act="reject">거절</button>' : '<button class="btn" type="button" data-act="save">권한 저장</button>'}</div></td></tr>`).join('')}</tbody></table>`;
+    el.querySelectorAll('button[data-act]').forEach(button => button.onclick = async () => {
+      const tr = button.closest('tr'), action = button.dataset.act, role = tr.querySelector('select')?.value, name = tr.dataset.name;
+      if (role === 'admin' && action !== 'reject' && !confirm(`${name} 님에게 관리자 권한을 부여할까요?`)) return;
+      if (action === 'reject' && !confirm(`${name} 님의 가입 신청을 거절하고 계정을 삭제할까요?`)) return;
+      button.disabled = true;
+      try {
+        await memberAdmin(action === 'reject' ? { action: 'reject', targetUserId: tr.dataset.u } : { action: 'set_role', targetUserId: tr.dataset.u, role });
+        profileCache = null;
+        alertless(action === 'reject' ? `${name} 님의 가입 신청을 거절했습니다` : `${name} · ${ROLE_KO[role]}로 저장했습니다`);
+        await peopleTable(el, {pendingOnly}); const h = document.querySelector('.dm-me'); h && pendingChip(h);
+      } catch (error) { alertless(error.message || '처리하지 못했습니다'); button.disabled = false; }
     });
   }
-  function confirmSelfDemote() { alertless('자기 자신의 관리자 권한은 여기서 내릴 수 없습니다'); return false; }
 
   async function backup() {
     const all = [];
@@ -423,5 +467,4 @@
     update: (path, patch) => docRef(path).update(patch),
   };
 })();
-
 

@@ -1,4 +1,4 @@
-const CACHE='dmillion-crm-ios-20261104-members-view-1';
+const CACHE='dmillion-crm-ios-20261104-members-view-2';
 const SHELL=['./crm2.html','./crm2.css','./crm2.js','./crm2-calendar.mjs','./crm2-calendar.css','./crm2-updates.mjs','./crm2-updates.css','./pwa.js','./config.js','./supabase.js','./bridge.js','./crm2-demo.mjs','./crm2-agent.js','./crm2-agent-core.mjs','./crm2-core.mjs','./crm2-coverage.mjs','./crm2-intake.js','./crm2-intake-core.mjs','./crm2-timeline.mjs','./crm2-records.mjs','./crm2-performance.mjs','./manifest.webmanifest','./icons/dmillion-app.svg','./icons/dmillion-app-180.png','./icons/dmillion-app-192.png','./icons/dmillion-app-512.png'];
 
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting())));
