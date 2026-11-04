@@ -1,4 +1,5 @@
 import {plain, remainingLegacyActions, isMeetingActivity, programCategories} from './crm2-core.mjs?v=20261030-coverage-1';
+import {matchesKoreanSearch} from './crm2-search.mjs?v=20261104-search-1';
 
 export const COVERAGE_STATES = [
   ['all','전체 고객'],['uncontacted','접촉 기록 없음'],['stale','장기 미접촉'],
@@ -104,7 +105,7 @@ export function filterCoverage(rows,filters={}) {
     if (filters.owner&&filters.owner!=='__none'&&r.owner!==filters.owner) return false;
     if (filters.market&&!r.categories.includes(filters.market)) return false;
     const q=String(filters.q||'').trim().toLocaleLowerCase('ko');
-    return !q||[r.company.name,r.owner,r.company.industry,r.company.stage,...r.categories,r.reason,...r.actions.map(a=>a.title)].join(' ').toLocaleLowerCase('ko').includes(q);
+    return matchesKoreanSearch([r.company.name,r.owner,r.company.industry,r.company.stage,...r.categories,r.reason,...r.actions.map(a=>a.title)].join(' '),q);
   }).sort((a,b)=>{
     if(filters.sort==='name') return String(a.company.name).localeCompare(String(b.company.name),'ko');
     if(filters.sort==='last') return (a.lastContact||'0000').localeCompare(b.lastContact||'0000')||String(a.company.name).localeCompare(String(b.company.name),'ko');

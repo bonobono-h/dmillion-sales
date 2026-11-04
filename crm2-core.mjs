@@ -1,4 +1,5 @@
 /* Pure CRM 2.0 helpers. No credentials, network calls or customer records here. */
+import {normalizeSearch,matchesKoreanSearch} from './crm2-search.mjs?v=20261104-search-1';
 export const STAGES = [
   ['discovery','발굴'],['qualification','요구 확인'],['proposal','제안·견적'],
   ['negotiation','협상'],['won','수주'],['lost','실패'],['hold','보류']
@@ -92,7 +93,7 @@ export function plain(value) {
   const s = safeText(value);
   return (s === '없음' || s === '-' || s === '미정' || s === '—') ? '' : s;
 }
-export function textSearch(value) { return safeText(value).toLocaleLowerCase('ko'); }
+export function textSearch(value) { return normalizeSearch(safeText(value)); }
 export function isTerminal(stage) { return ['won','lost'].includes(stage); }
 export function isOpportunityOpen(opp) { return !isTerminal(opp.stage) && opp.status !== 'closed'; }
 export function mappedCompany(row) {
@@ -294,7 +295,7 @@ export function searchAccounts(companies,profiles,opps,tasks,filters={},contacts
       programCategories(p).join(' ')];
     if(allowContacts)fields.push(company.contactPerson,company.contactName,
       ct.person,ct.name,ct.phone,ct.email);
-    return textSearch(fields.map(v=>String(v??'')).join(' ')).includes(q);
+    return matchesKoreanSearch(fields.map(v=>String(v??'')).join(' '),q);
   });
 }
 export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
@@ -309,7 +310,7 @@ export function filteredAccounts(companies,profiles,opps,tasks,filters={}){
     if(stage && c.stage!==stage) return false;
     if(filters.owner && c.owner!==filters.owner)return false;
     if(filters.hasTask && !nextActionFor(c,tasks))return false;
-    if(q && !textSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,programCategories(p).join(' '),p.salesComment,p.contactReason,p.contactName].join(' ')).includes(q))return false;
+    if(q && !matchesKoreanSearch([c.name,c.industry,c.bizDetail,c.needs,c.owner,c.region,c.nextAction,programCategories(p).join(' '),p.salesComment,p.contactReason,p.contactName].join(' '),q))return false;
     return true;
   }).sort((a,b)=>{
     if(filters.sort==='priority') {

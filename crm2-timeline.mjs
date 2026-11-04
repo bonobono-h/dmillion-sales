@@ -1,4 +1,5 @@
 import {STAGE_LABEL,activityDate,isOpportunityOpen,nextActionFor,safeText} from './crm2-core.mjs';
+import {matchesKoreanSearch} from './crm2-search.mjs?v=20261104-search-1';
 
 export const TIMELINE_STAGES = [
   ['discovery','발굴'],
@@ -161,7 +162,7 @@ export function filterTimelineRows(rows=[],filters={}){
     if(filters.status==='active'&&(row.planningYear?row.stageKey==='not_started':['won','lost','hold'].includes(row.stageKey)))return false;
     if(q){
       const hay=[row.company.name,row.company.owner,row.stageLabel,row.latestUpdate?.title,row.next?.title,row.carried?'이월 진행':''].join(' ').toLocaleLowerCase('ko');
-      if(!hay.includes(q))return false;
+      if(!matchesKoreanSearch(hay,q))return false;
     }
     return true;
   }).sort((a,b)=>{

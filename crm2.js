@@ -1,15 +1,16 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261104-records-1';
-import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261104-search-1';
+import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261104-search-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
-import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261104-records-1';
+import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261104-search-1';
 import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261104-records-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
 import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
 import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-2';
+import {bindComposedSearch} from './crm2-search.mjs?v=20261104-search-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -278,7 +279,7 @@ function renderCoverage(){
     <section class="panel coverage-panel">
       <div class="panel-head"><div><h2 class="panel-title">업체별 관리 리스트</h2><p class="panel-subtitle">${rows.length}곳 · ${labels[f.status]} · ${today} 기준</p></div></div>
       <div class="toolbar">
-        <input class="field search-input" id="coverage-q" aria-label="관리 현황 검색" placeholder="업체명 · 내부 담당 · 다음 할 일 검색" value="${attr(f.q)}">
+        <input class="field search-input" id="coverage-q" aria-label="관리 현황 검색" placeholder="업체명 · 초성 · 내부 담당 · 다음 할 일 검색" value="${attr(f.q)}">
         <select class="select" id="coverage-sort" aria-label="관리 현황 정렬">${options([['attention','확인 필요한 순'],['last','오래 미접촉한 순'],['name','업체명순']],f.sort,'정렬')}</select>
       </div>
       <div class="table-scroll coverage-scroll"><table class="table coverage-table"><thead><tr>
@@ -369,7 +370,7 @@ function renderTimeline(){
       <section class="panel timeline-list-panel">
         <div class="panel-head"><div><h2 class="panel-title">${year}년 업체별 진행 현황</h2><p class="panel-subtitle">${filtered.length}곳 · ${year===2026?today+' 기준':'연도별 독립 관리'} · 최근 업데이트순</p></div></div>
         <div class="toolbar timeline-toolbar">
-          <input id="timeline-q" class="field search-input" placeholder="업체명 · 담당자 · 최근 업데이트 · 다음 행동 검색" value="${attr(filters.q)}" aria-label="진행 타임라인 검색">
+          <input id="timeline-q" class="field search-input" placeholder="업체명 · 초성 · 담당자 · 최근 업데이트 · 다음 행동 검색" value="${attr(filters.q)}" aria-label="진행 타임라인 검색">
           <select id="timeline-year" class="select timeline-year-select" aria-label="기준 연도">${options([['2026','2026년 기존 이력'],['2027','2027년 새 진행']],filters.year,'기준 연도')}</select>
           <select id="timeline-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],filters.kind,'대상 선택')}</select>
           <select id="timeline-stage" class="select" aria-label="현재 단계">${options(stages,filters.stage,'단계 전체')}</select>
@@ -420,7 +421,7 @@ function renderAccounts(){
       <div class="panel-head"><div><h2 class="panel-title">업체 목록</h2><p class="panel-subtitle">${list.length}개 업체 · 선택하면 상세 화면으로 이동</p></div>
         ${btn('open-import','⇩ 엑셀 비교','secondary')}</div>
       <div class="toolbar crm-account-toolbar">
-        <input id="f-q" class="field search-input" placeholder="업체명 · 담당자 · 전화 · 이메일 · 니즈 검색" value="${attr(f.q)}" aria-label="업체 및 연락처 통합 검색">
+        <input id="f-q" class="field search-input" placeholder="업체명 · 초성 · 담당자 · 연락처 · 니즈 검색" value="${attr(f.q)}" aria-label="업체 및 연락처 통합 검색">
         <select id="f-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],f.kind,'대상 선택')}</select>
         <select id="f-owner" class="select" aria-label="디밀리언 영업 담당자 필터">${options(ownerChoices(),f.owner||'','영업 담당 전체')}</select>
         <select id="f-sort" class="select" aria-label="정렬">${options([['priority','우선 연락순'],['action','다음 일정순'],['name','업체명순'],['grade','등급순'],['opportunities','영업 기회순']],f.sort,'정렬')}</select>
@@ -1473,24 +1474,21 @@ document.addEventListener('change',async e=>{
     e.target.value='';
   }
 });
+const searchStates={'f-q':'filters','coverage-q':'coverage','timeline-q':'timeline'};
+bindComposedSearch(document,{
+  ids:Object.keys(searchStates),
+  onValue:input=>{state[searchStates[input.id]].q=input.value;},
+  onSearch:input=>{
+    const {id,selectionStart:start,selectionEnd:end,selectionDirection:direction}=input,focused=document.activeElement===input;
+    render();
+    if(id==='f-q'){const list=$main.querySelector('.account-layout .table-scroll');if(list)list.scrollTop=0;}
+    const next=$(id);if(focused&&next){next.focus({preventScroll:true});if(start!==null)next.setSelectionRange(start,end??start,direction||'none');}
+  }
+});
 document.addEventListener('input',e=>{
-  if(e.target.id==='coverage-q'){
-    const pos=e.target.selectionStart;state.coverage.q=e.target.value;render();
-    const next=$('coverage-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);return;
-  }
-  if(e.target.id==='timeline-q'){
-    const pos=e.target.selectionStart;state.timeline.q=e.target.value;render();
-    const next=$('timeline-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);return;
-  }
   if(e.target.id==='crm2NeedsSource'||e.target.id==='crm2NeedsSummary'){
     updateNeedsPreview();return;
   }
-  if(e.target.id!=='f-q')return;
-  const input=e.target,pos=input.selectionStart;state.filters.q=input.value;
-  render();
-  const list=$main.querySelector('.account-layout .table-scroll');
-  if(list)list.scrollTop=0; // Intentional for a new search.
-  const next=$('f-q');next?.focus();if(next&&pos!==null)next.setSelectionRange(pos,pos);
 });
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'){closeModal();document.querySelector('.sidebar').classList.remove('open');}
