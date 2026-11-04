@@ -1,12 +1,13 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261103-grades-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261104-records-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261030-coverage-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
-import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261102-year-1';
-import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261103-perf-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261103-grades-1';
+import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261104-records-1';
+import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261104-records-1';
+import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -32,8 +33,13 @@ const contactText=value=>{
 function contactFor(company){
   if(!state.canWrite)return {person:'',phone:'',email:'',restricted:true};
   const id=cid(company),p=state.profiles[id]||{},stored=state.contacts[id]||{};
-  const latest=state.importRows.find(r=>normalizeCompanyName(r.name)===normalizeCompanyName(company.name));
+  const latest=state.contactOverrides?.[id]?null:state.importRows.find(r=>normalizeCompanyName(r.name)===normalizeCompanyName(company.name));
   const pick=(...values)=>values.map(contactText).find(Boolean)||'';
+  if(stored.contactEditedAt)return {
+    person:pick(latest?.contactName)||contactText(stored.contactPerson),
+    phone:pick(latest?.phone)||contactText(stored.phone),
+    email:pick(latest?.email)||contactText(stored.email)
+  };
   return {
     // An uploaded spreadsheet is session-only and may be newer than the existing site values.
     person:pick(latest?.contactName,stored.contactPerson,stored.person,stored.name,company.contactPerson,p.contactName,company.contactName),
@@ -57,7 +63,7 @@ function contactPanel(company){
   const contact=contactFor(company);
   const value=(v,t)=>contact.restricted?'<span class="empty-inline">영업 담당자 이상 열람</span>':contactDisplay(v,t);
   return `<section class="crm-contact-card" aria-label="고객사 담당자와 연락처">
-    <div class="crm-contact-title"><strong>고객 담당자 · 연락처</strong><span>${state.demo?'가상 데이터':contact.restricted?'권한 제한':'기존 연락처 연결'}</span></div>
+    <div class="crm-contact-title"><strong>고객 담당자 · 연락처</strong><div class="crm-contact-tools"><span>${state.demo?'가상 데이터':contact.restricted?'권한 제한':'기존 연락처 연결'}</span>${state.canWrite?btn('edit-contact','연락처 수정','secondary',`data-id="${attr(cid(company))}"`):''}</div></div>
     <div class="crm-contact-grid">
       <div class="crm-contact-item"><div class="crm-contact-label">고객 담당자</div>${value(contact.person,'name')}</div>
       <div class="crm-contact-item"><div class="crm-contact-label">전화번호</div>${value(contact.phone,'phone')}</div>
@@ -82,7 +88,7 @@ const state={
   loading:false,connected:false,legacyImporting:false
 };
 const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
-const agent=createSalesAgentUI({state,render,toast,reload:loadLive,newCompany:companyModal,openCompany:selectCompany});
+const agent=createSalesAgentUI({state,render,toast,reload:loadLive,newCompany:companyModal,openCompany:selectCompany,progress:{fields:options=>progressFields(state,options),sync:(form,suggest)=>syncProgressFields(state,form,suggest),read:selectedProgress,save:(id,selection,meta)=>saveProgress(state,id,selection,meta),label:progressLabel}});
 const DEFAULT_OWNERS=['김웅섭','윤홍렬','한인탁','박진우'];
 state.salesOwners=[];state.detailOpen=false;state.accountView='list';state.returnScreen='accounts';state.accountScroll=0;
 if(['coverage','timeline','home'].includes(state.screen)){state.accountView=state.screen;state.screen='accounts';}
@@ -307,12 +313,8 @@ function renderTimelineDetail(row){
       <div><span>다음 기한</span><strong>${row.nextDue?asDate(row.nextDue):'미정'}</strong></div>
     </div>
     <section class="timeline-stage-panel" aria-label="영업 진행 단계">
-      <div class="timeline-detail-section"><strong>단계 진행</strong><span>현재 · ${esc(row.stageLabel)}</span></div>
-      ${row.planningYear?`<div class="timeline-year-editor">
-        <div><strong>${row.year}년 진행 단계 변경</strong><small>여기서 변경해도 2026 타임라인은 그대로 유지됩니다.</small></div>
-        <select id="timeline-progress-stage" class="select" aria-label="${row.year}년 진행 단계">${options(YEAR_TIMELINE_STAGES,row.stageKey,'단계 선택')}</select>
-        ${state.canWrite?btn('save-year-progress','단계 저장','primary',`data-id="${attr(row.id)}" data-year="${row.year}"`):'<span class="empty-inline">조회 권한</span>'}
-      </div>`:''}
+      <div class="timeline-detail-section"><strong>단계 진행</strong><div class="crm-stage-actions"><span>현재 · ${esc(row.stageLabel)}</span>${state.canWrite?btn('edit-progress','단계 변경','secondary',`data-id="${attr(row.id)}" data-year="${row.year}"`):''}</div></div>
+      <p class="small muted">${row.year}년 업체 진행 단계입니다. 활동 저장 시 함께 변경하거나 여기서 직접 수정할 수 있습니다.</p>
       ${row.carried?`<div class="timeline-carry-note">열린 영업기회·진행 중 업무·수행 과제가 있어 2026년 단계를 이월했습니다. 필요하면 위에서 직접 변경하세요.</div>`:''}
       <div class="timeline-stage-flow ${row.planningYear?'planning':''}">${stageSteps.map(([key,label],index)=>{
         const cls=index<currentIndex?'done':index===currentIndex?'current':'future';
@@ -542,13 +544,13 @@ function renderCompanyDetail(){
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
     <dt>이메일</dt><dd>${showContact(contact.email,'email')}</dd></dl>
-    <div class="divider"></div><div class="notice">전화번호·이메일은 기존 앱의 보호된 <b>data/contacts</b> 저장소에서 읽습니다. 최신 고객사 엑셀을 업로드하면 이 브라우저에서만 최신 값을 우선 표시하며, 확인 전에는 서버 정보를 덮어쓰지 않습니다.</div>
-    <div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 시스템에서 연락처 수정 ↗</a></div>`;
+    <div class="divider"></div><div class="notice">고객 담당자·전화번호·이메일은 연락처 수정에서 등록할 수 있습니다. 최신 엑셀의 연락처는 미리보기이며, 저장 전에는 기존 정보를 바꾸지 않습니다.</div>
+    <div class="detail-actions">${state.canWrite?btn('edit-contact','연락처 수정','secondary',`data-id="${attr(cid(c))}"`):''}</div>`;
   const opportunities=`<div class="section-label">진행 중 / 종료 영업 기회 · ${opp.length}건</div><div class="mini-list">${opp.map(o=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(o.title)}</h3>${tag(STAGE_LABEL[o.stage]||o.stage,'outline')}</div><p class="mini-desc">${esc(o.solution||o.solutionTags?.join(', ')||'분야 미입력')} · ${moneyKRW(o.estimatedAmount)} · ${esc(o.owner||'담당 미지정')}</p>
     ${state.canWrite?`<div class="detail-actions">${btn('edit-opportunity','제안·견적 편집','secondary',`data-id="${attr(cid(o))}"`)}</div>`:''}</div>`).join('')||empty('등록된 영업 기회가 없습니다.','업체당 여러 제안을 별도 관리할 수 있습니다.')}</div>
     <div class="detail-actions">${state.canWrite?btn('new-opportunity','＋ 제안·견적 추가','primary'):''}</div>`;
   const activities=`<div class="crm-section-row"><strong>활동 이력 · ${acts.length}건</strong>
-    ${state.canWrite?btn('new-meeting','＋ 미팅 이력 등록','primary'):''}</div>
+    ${state.canWrite?btn('new-meeting','＋ 활동 기록','primary'):''}</div>
     <div class="crm-meeting-history">
       ${acts.map(meetingEntry).join('')||empty('등록된 미팅 이력이 없습니다.','현장 방문이나 미팅 후 핵심 내용을 기록해보세요.')}
     </div>
@@ -565,10 +567,10 @@ function renderCompanyDetail(){
     ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
   const map={overview,people,progress,tasks,opportunities,activities,projects:projectsHtml,documents};
   return `<div class="panel-body"><div class="detail-top"><div>${tag(p.accountGrade?`${p.accountGrade}등급`:'등급 미지정',(p.accountGrade||'').toLowerCase())}<h2 class="detail-name">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'산업 분류 없음')} · ${esc(c.region||p.region||'지역 미입력')}</p></div>${state.canWrite?`<button type="button" class="btn secondary" data-action="edit-profile">편집</button>`:''}</div>
-    <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${programCategories(p).length?programCategories(p).map(name=>tag(name,'outline')).join(''):tag('미지정','outline')}${tag(c.stage||'단계 미입력','outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
+    <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${programCategories(p).length?programCategories(p).map(name=>tag(name,'outline')).join(''):tag('미지정','outline')}${tag(`${state.timeline.year}년 · ${progressRow?.stageLabel||c.stage||'단계 미입력'}`,'outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
     ${contactPanel(c)}
     ${state.canWrite?`<div class="crm-detail-actions">
-      ${btn('new-meeting','＋ 미팅 이력','primary')}
+      ${btn('new-meeting','＋ 활동 기록','primary')}
       ${btn('new-task','＋ 후속 업무','secondary')}
       ${btn('new-opportunity','＋ 제안·견적','secondary')}
     </div>`:''}
@@ -612,7 +614,7 @@ function renderActivities(){
   const filtered=state.activityFilter==='all'?scoped:scoped.filter(a=>(a.status||'완료')===state.activityFilter);
   const meetCount=all.filter(isMeetingActivity).length;
   return `${heading('미팅 이력','고객 미팅·현장 방문 기록을 한곳에서 확인하고 바로 등록합니다.',
-    `${state.canWrite?btn('new-meeting','＋ 미팅 이력 등록','primary'):''}`)}
+    `${state.canWrite?btn('new-meeting','＋ 활동 기록','primary'):''}`)}
   <div class="stats crm-stats-compact">
     ${stat('등록된 미팅',meetCount+'건','기존 기록 포함','▤')}
     ${stat('완료 미팅',all.filter(a=>isMeetingActivity(a)&&a.status==='완료').length+'건','완료 상태만 집계','✓')}
@@ -943,21 +945,24 @@ function profileModal(){
       state.profiles[cid(c)]={...p,...patch,_id:cid(c)};
     });
 }
-async function saveYearProgress(companyId,year,stage){
-  if(!state.canWrite)throw new Error('진행 단계 수정 권한이 없습니다.');
-  if(Number(year)===2026)throw new Error('2026 타임라인은 기존 이력 보존을 위해 수정할 수 없습니다.');
-  if(!YEAR_TIMELINE_STAGES.some(([key])=>key===stage))throw new Error('변경할 진행 단계를 선택해 주세요.');
-  const company=cc(companyId);if(!company)throw new Error('업체 정보를 찾을 수 없습니다.');
-  const profile=state.profiles[companyId]||{},key=String(year),previous=profile.yearProgress?.[key]||{};
-  if(previous.stage===stage){toast(`${year}년 진행 단계가 이미 ${Object.fromEntries(YEAR_TIMELINE_STAGES)[stage]}입니다.`);return;}
-  const now=new Date().toISOString();
-  const history=[...(Array.isArray(previous.history)?previous.history:[]),{id:uid(),stage,at:now,by:state.userId||null}].slice(-50);
-  const record={...previous,stage,startedAt:stage==='not_started'?null:(previous.startedAt||null),updatedAt:now,history};
-  const patch={yearProgress:{...(profile.yearProgress||{}),[key]:record},updatedAt:now};
-  await saveDoc('crm2Profiles',companyId,patch,!!profile._id);
-  state.profiles[companyId]={...profile,...patch,_id:companyId};
-  state.selectedId=companyId;render();
-  toast(`${company.name}의 ${year}년 진행 단계를 ${Object.fromEntries(YEAR_TIMELINE_STAGES)[stage]}으로 변경했습니다.`);
+function contactModal(id=state.selectedId){
+ const c=cc(id);if(!c||!state.canWrite)return toast('연락처 수정 권한이 없습니다.',true);
+ const contact=contactFor(c);
+ showModal(`${c.name} · 연락처 수정`,'고객 측 담당자와 연락처를 입력하세요.',
+  `<label>고객 담당자<input name="contactPerson" maxlength="300" value="${attr(contact.person)}" placeholder="이름·직함·부서"></label>
+   <label>전화번호<input name="phone" type="tel" maxlength="300" value="${attr(contact.phone)}" placeholder="예: 010-0000-0000"></label>
+   <label>이메일<input name="email" maxlength="600" value="${attr(contact.email)}" placeholder="예: contact@example.com"><small>여러 주소는 쉼표로 구분하세요. 저장한 연락처는 승인된 영업 사용자에게 공유됩니다.</small></label>`,
+  async fd=>{await saveContact(state,id,Object.fromEntries(fd));return {message:state.demo?'데모: 연락처를 적용했습니다. (서버 저장 없음)':'고객 담당자·전화번호·이메일을 저장했습니다.'};});
+}
+function progressModal(id,year){
+ if(!state.canWrite)return toast('진행 단계 수정 권한이 없습니다.',true);
+ const row=currentProgress(state,id,year);if(!row)return;
+ showModal(`${cname(id)} · ${year}년 단계 변경`,'업체 진행 단계를 변경하고 변경 이력을 남깁니다.',
+  `<p>현재 단계 · <strong>${esc(row.stageLabel)}</strong></p>
+   <label>변경할 단계<select name="stage" required>${options(PROGRESS_STAGES,row.stageKey,'단계 선택')}</select></label>
+   <label>변경 메모 (선택)<textarea name="note" maxlength="1000" rows="2" placeholder="예: 현장 방문 후 요구사항 확인 완료"></textarea></label>
+   <small>이 변경은 ${year}년 타임라인에 적용됩니다. 다른 연도와 제안·견적의 금액·계약은 변경하지 않습니다.</small>`,
+  async fd=>{await saveProgress(state,id,{year,stage:safeText(fd.get('stage'))},{note:safeText(fd.get('note'))});return {message:`${year}년 진행 단계를 ${progressLabel(fd.get('stage'))}(으)로 저장했습니다.`};});
 }
 function updateNeedsPreview(){
   const target=$('crm2NeedsPreview'),raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
@@ -1006,28 +1011,28 @@ function needsModal(){
   updateNeedsPreview();
 }
 
-const MEETING_FORM_TYPES=['첫 미팅','현장 방문','내방','화상','제안·발표'];
+const MEETING_FORM_TYPES=ACTIVITY_TYPES;
 function meetingModal(){
   if(!state.canWrite)return toast('미팅 기록 수정 권한이 없습니다.',true);
   const candidates=state.companies.slice().sort((a,b)=>a.name.localeCompare(b.name,'ko'));
   if(!candidates.length)return toast('먼저 업체를 등록해 주세요.',true);
   const selected=candidates.some(c=>cid(c)===state.selectedId)?state.selectedId:cid(candidates[0]);
-  showModal('미팅 이력 등록','작성한 미팅 기록은 기존 영업관리의 이력에서도 확인할 수 있습니다.',
+  showModal('활동 이력 등록','통화·미팅·현장 방문·요구 확인을 기록하고, 원하면 진행 단계도 함께 변경합니다.',
     `<label>고객사
       <select name="companyId" required>${candidates.map(c=>`<option value="${attr(cid(c))}" ${cid(c)===selected?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
     </label>
     <div class="form-row">
-      <label>미팅 일시 <input name="meetingAt" type="datetime-local" required value="${attr(localDateTime())}"></label>
+      <label>활동 일시 <input name="meetingAt" type="datetime-local" required value="${attr(localDateTime())}"></label>
       <label>진행 상태 <select name="meetingStatus">
         <option value="완료">완료</option><option value="예정">예정</option>
       </select></label>
     </div>
     <div class="form-row">
-      <label>미팅 유형 <select name="meetingType">${MEETING_FORM_TYPES.map(t=>`<option value="${attr(t)}">${esc(t)}</option>`).join('')}</select></label>
+      <label>활동 유형 <select name="meetingType">${MEETING_FORM_TYPES.map(t=>`<option value="${attr(t)}">${esc(t)}</option>`).join('')}</select></label>
       <label>고객 측 참석자 <input name="attendeesClient" maxlength="200" placeholder="확인된 참석자만 입력"></label>
     </div>
     <label>디밀리언 참석자 <input name="attendeesUs" maxlength="200" placeholder="예: 담당 매니저, PM"></label>
-    <label>미팅 제목 <input name="meetingTitle" required maxlength="160" placeholder="예: 로봇 자동화 도입 요구사항 논의"></label>
+    <label>활동 제목 <input name="meetingTitle" required maxlength="160" placeholder="예: 로봇 자동화 도입 요구사항 논의"></label>
     <label>핵심 내용 <textarea name="meetingSummary" required maxlength="8000" rows="4"
       placeholder="고객이 요청한 내용과 논의 결과를 간결하게 기록하세요. 확인되지 않은 내용은 [확인 필요]로 남기세요."></textarea></label>
     <div class="crm-meeting-followup">
@@ -1037,7 +1042,8 @@ function meetingModal(){
       <label class="crm-inline-check"><input name="createTask" type="checkbox" checked>
         다음 해야 할 일을 CRM 후속 업무에도 등록</label>
     </div>
-    <div class="crm-meeting-form-note">회사 상태나 진행 단계는 자동 변경하지 않습니다. 후속 업무를 등록하지 않아도 미팅 이력은 저장됩니다.</div>`,
+    ${progressFields(state,{id:selected,type:MEETING_FORM_TYPES[0],year:Number(state.timeline.year)||2026})}
+    <div class="crm-meeting-form-note">선택한 활동과 후속 업무를 저장합니다. 금액·계약 상태는 변경하지 않습니다.</div>`,
     async fd=>{
       const companyId=safeText(fd.get('companyId'));
       if(!state.companies.some(c=>cid(c)===companyId))throw new Error('등록된 업체를 선택해 주세요.');
@@ -1049,6 +1055,7 @@ function meetingModal(){
       if(!MEETING_FORM_TYPES.includes(type))throw new Error('지원하지 않는 미팅 유형입니다.');
       const status=safeText(fd.get('meetingStatus'));
       if(!['완료','예정'].includes(status))throw new Error('미팅 상태를 선택해 주세요.');
+      const progress=selectedProgress(fd);
       const title=safeText(fd.get('meetingTitle')),summary=safeText(fd.get('meetingSummary'));
       if(!title||!summary)throw new Error('미팅 제목과 핵심 내용을 입력해 주세요.');
       if(title.length>160||summary.length>8000)throw new Error('제목 또는 본문이 너무 깁니다.');
@@ -1062,24 +1069,25 @@ function meetingModal(){
       // The existing sales-management app uses the same activities collection.
       await saveDoc('activities',id,record);
       state.activities.push({_id:id,...record});
+      const warnings=[];
+      if(progress){try{await saveProgress(state,companyId,progress,{sourceActivityId:id});}catch(error){console.error(error);warnings.push('진행 단계 변경에 실패했습니다. 타임라인의 단계 변경에서 다시 저장해 주세요.');}}
       state.returnScreen=state.screen;state.detailOpen=true;state.selectedId=companyId;state.companyTab='activities';state.screen='accounts';
       if(nextAction&&fd.get('createTask')==='on'){
         const exists=state.tasks.some(t=>t.companyId===companyId&&safeText(t.title)===nextAction&&
           !['done','cancelled','deleted'].includes(t.status));
-        if(exists)return {message:'미팅을 저장했습니다. 같은 내용의 미완료 업무가 이미 있어 중복 등록하지 않았습니다.'};
+        if(exists)return {message:`활동을 저장했습니다. 같은 내용의 미완료 업무가 있어 중복 등록하지 않았습니다. ${warnings.join(' ')}`,warning:warnings.length>0};
         const taskId=uid(),task={companyId,title:nextAction,status:'todo',
           dueAt:nextDue||null,assigneeId:state.userId||null,
           priority:'normal',sourceActivityId:id,createdAt};
         try{
           await saveDoc('tasks',taskId,task);
           state.tasks.push({_id:taskId,...task});
-          return {message:state.demo?'데모: 미팅·후속 업무가 추가됐습니다. (서버 저장 없음)':'미팅과 후속 업무를 저장했습니다.'};
         }catch(error){
           console.error('Meeting was saved but follow-up task failed',error);
-          return {message:'미팅은 저장됐지만 후속 업무 등록은 실패했습니다. 후속 업무를 별도로 추가해 주세요.',warning:true};
+          warnings.push('후속 업무 등록에 실패했습니다. 후속 업무를 별도로 추가해 주세요.');
         }
       }
-      return {message:state.demo?'데모: 미팅이 추가됐습니다. (서버 저장 없음)':'미팅 이력을 저장했습니다.'};
+      return {message:`${state.demo?'데모: ':''}활동을 저장했습니다.${progress&&!warnings.some(x=>x.includes('진행 단계'))?' 진행 단계도 변경했습니다.':''} ${warnings.join(' ')}${state.demo?' (서버 저장 없음)':''}`,warning:warnings.length>0};
     });
 }
 
@@ -1357,10 +1365,8 @@ document.addEventListener('click',async e=>{
     }
     else if(action==='open-import'){state.screen='import';render();}
     else if(action==='edit-profile')profileModal();
-    else if(action==='save-year-progress'){
-      const stage=safeText($('timeline-progress-stage')?.value);
-      await saveYearProgress(id,Number(a.dataset.year),stage);
-    }
+    else if(action==='edit-contact')contactModal(id);
+    else if(action==='edit-progress')progressModal(id,Number(a.dataset.year));
     else if(action==='edit-needs')needsModal();
     else if(action==='format-needs'){
       const raw=$('crm2NeedsSource'),summary=$('crm2NeedsSummary');
@@ -1393,6 +1399,7 @@ document.addEventListener('click',async e=>{
   }catch(error){console.error(error);toast(error.message,true);}
 });
 document.addEventListener('change',async e=>{
+  if(e.target.closest('#dialogForm [data-progress-choice]')||['meetingType','meetingStatus','companyId'].includes(e.target.name)&&e.target.closest('#dialogForm'))syncProgressFields(state,e.target.closest('form'),['meetingType','companyId','progressYear'].includes(e.target.name));
   const id=e.target.id;
   if(id==='detail-progress-year'){state.timeline.year=e.target.value;updateCompanyDetailOnly();return;}
   if(id.startsWith('coverage-')){

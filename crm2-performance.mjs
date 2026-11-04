@@ -1,10 +1,10 @@
 /* 영업 실적(목표 대비) 계산. 화면 표시용 읽기 전용 계산이며 DB에 쓰지 않습니다. */
-import {timelineDay} from './crm2-timeline.mjs?v=20261102-year-1';
+import {timelineDay} from './crm2-timeline.mjs?v=20261104-records-1';
 
 export const AGREED_STAGES = ['negotiation','won'];
 export const GOAL_DOC_PREFIX = 'sales-';
 const DAY_MS = 86400000;
-const MEETING_TYPES = ['첫 미팅','현장 방문','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표','발표'];
+const MEETING_TYPES = ['첫 미팅','현장 방문','요구 확인','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표','발표'];
 
 const norm = s => String(s ?? '').normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase('ko');
 const num = v => { const x = Number(v); return Number.isFinite(x) ? x : 0; };

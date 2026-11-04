@@ -266,7 +266,7 @@ export function groupStats(accounts,profiles,opps,tasks){
 }
 export function isMeetingActivity(activity={}) {
   return activity.meetingRecord===true ||
-    ['첫 미팅','현장 방문','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표'].includes(activity.type);
+    ['첫 미팅','현장 방문','요구 확인','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표'].includes(activity.type);
 }
 export function accountPriority(company,tasks=[],today) {
   const next=nextActionFor(company,tasks);

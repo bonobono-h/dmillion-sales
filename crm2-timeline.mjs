@@ -10,6 +10,7 @@ export const TIMELINE_STAGES = [
   ['won','수주']
 ];
 export const YEAR_TIMELINE_STAGES = [['not_started','미진행'],...TIMELINE_STAGES];
+export const PROGRESS_STAGES = [...YEAR_TIMELINE_STAGES,['hold','보류'],['lost','실패']];
 
 const DAY_MS=86400000;
 
@@ -62,7 +63,7 @@ function projectBelongsTo(project,id){
 function yearProgressEvent(row,year){
   const date=timelineDay(row.at||row.updatedAt||row.createdAt);
   if(!date)return null;
-  const label=Object.fromEntries(YEAR_TIMELINE_STAGES)[row.stage]||row.stage||'단계 미정';
+  const label=Object.fromEntries(PROGRESS_STAGES)[row.stage]||row.stage||'단계 미정';
   return {date,kind:'year_progress',title:`${year}년 진행 단계 · ${label}`,detail:row.note||'',status:'단계 변경',id:row.id||`${date}-${row.stage}`};
 }
 
@@ -100,10 +101,10 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     const activeProjects=projects.filter(row=>projectBelongsTo(row,id)&&isProjectOpen(row));
     const progress=profiles[id]?.yearProgress?.[String(year)]||null;
     if(planningYear){
-      const allowed=new Set(YEAR_TIMELINE_STAGES.map(([key])=>key));
+      const allowed=new Set(PROGRESS_STAGES.map(([key])=>key));
       const carried=!progress&&(opps.some(isOpportunityOpen)||activeTasks.length>0||activeProjects.length>0);
       const stageKey=allowed.has(progress?.stage)?progress.stage:(carried&&allowed.has(stage.key)?stage.key:'not_started');
-      const stageLabel=Object.fromEntries(YEAR_TIMELINE_STAGES)[stageKey]||'미진행';
+      const stageLabel=Object.fromEntries(PROGRESS_STAGES)[stageKey]||'미진행';
       const history=Array.isArray(progress?.history)?progress.history:[];
       const events=history.map(row=>yearProgressEvent(row,year)).filter(Boolean).sort((a,b)=>compareDate(b.date,a.date));
       const latestUpdate=events[0]||null;
@@ -124,7 +125,9 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     }
     const companyUpdated=timelineDay(company.updatedAt||company.createdAt);
     const companyEvent=companyUpdated?{date:companyUpdated,kind:'company',title:'업체 정보 업데이트',detail:'',status:'업데이트',id}:null;
-    const events=[...acts.map(activityEvent),...visibleTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent].filter(Boolean)
+    const savedStage=PROGRESS_STAGES.some(([key])=>key===progress?.stage)?progress.stage:null;
+    const progressEvents=(Array.isArray(progress?.history)?progress.history:[]).map(row=>yearProgressEvent(row,year));
+    const events=[...acts.map(activityEvent),...visibleTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent,...progressEvents].filter(Boolean)
       .sort((a,b)=>compareDate(b.date,a.date));
     const datedActivities=acts.map(row=>timelineDay(activityDate(row))).filter(Boolean);
     const starts=[...datedActivities,timelineDay(company.createdAt),...opps.map(row=>timelineDay(row.createdAt)).filter(Boolean)].filter(Boolean).sort(compareDate);
@@ -137,9 +140,10 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     const overdue=activeTasks.filter(row=>{
       const due=timelineDay(row.dueAt);return due&&today&&due<today;
     }).length;
-    const mainIndex=TIMELINE_STAGES.findIndex(([key])=>key===stage.key);
+    const stageKey=savedStage||stage.key,steps=stageKey==='not_started'?YEAR_TIMELINE_STAGES:TIMELINE_STAGES;
+    const mainIndex=steps.findIndex(([key])=>key===stageKey);
     return {
-      id,company,year,planningYear:false,carried:false,progress:null,stageKey:stage.key,stageLabel:stage.label||safeText(company.stage)||'단계 미정',stageIndex:mainIndex,stageSteps:TIMELINE_STAGES,
+      id,company,year,planningYear:false,carried:false,progress,stageKey,stageLabel:savedStage?Object.fromEntries(PROGRESS_STAGES)[savedStage]:stage.label||safeText(company.stage)||'단계 미정',stageIndex:mainIndex,stageSteps:steps,
       opportunity:stage.opportunity,startDay,targetDay,next,nextDue,latestUpdate,recentDays,overdue,
       activeTasks,events,activityCount:acts.length,opportunityCount:opps.length,
       elapsedDays:startDay&&today?Math.max(0,daysBetween(startDay,today)):null

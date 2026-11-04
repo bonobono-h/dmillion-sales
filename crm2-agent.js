@@ -1,7 +1,7 @@
 import {buildRuleAgentDraft,matchAgentCompanies,sanitizeAgentDraft} from './crm2-agent-core.mjs?v=20261103-agent-3';
 import {sourceHash} from './crm2-intake-core.mjs?v=20261030-intake-1';
 
-export function createSalesAgentUI({state,render,toast,reload,newCompany,openCompany}){
+export function createSalesAgentUI({state,render,toast,reload,newCompany,openCompany,progress}){
   const ui={transcript:'',draft:null,busy:false,listening:false,recognition:null,result:null,error:'',analysisNotice:''};
   const esc=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const id=company=>company?._id||company?.id||'';
@@ -30,6 +30,7 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
           <section class="agent-unknowns"><strong>확인 필요</strong>${items(draft.unknowns,'추가 확인 항목 없음')}</section>
         </div>
         <div class="agent-stage-note"><span>단계 제안</span><strong>${esc(draft.stageSuggestion||'현재 단계 유지')}</strong><small>참고용이며 업체 단계·금액·계약 상태는 자동 변경하지 않습니다.</small></div>
+        ${progress?.fields({id:selected,type:draft.activityType,year:Number(state.timeline?.year)||2026})||''}
         <div class="section-label">후속업무 후보</div>
         <div class="agent-task-list">${draft.tasks.length?draft.tasks.map((task,index)=>`<div class="intake-task">
           <label class="intake-check"><input type="checkbox" name="taskUse" value="${index}" ${task.use===false?'':'checked'}> 업무로 등록</label>
@@ -46,7 +47,7 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
   function view(){
     if(!state.canWrite)return '<section class="panel panel-body"><h1>AI 영업 Agent</h1><p>영업담당 이상 권한에서 사용할 수 있습니다.</p></section>';
     if(ui.result)return `<div class="page-heading"><div><p class="eyebrow">DMILLION / SALES AGENT</p><h1 class="page-title">CRM 반영 완료</h1><p class="subtitle">승인한 활동과 후속업무가 중앙 DB에 저장되었습니다.</p></div></div>
-      <section class="panel panel-body agent-success"><div class="agent-success-mark">✓</div><h2>${esc(ui.result.companyName)} 기록 완료</h2><p>활동 1건 · 후속업무 ${ui.result.taskCount}건을 저장하고 최신 CRM 데이터를 다시 불러왔습니다.</p><div class="heading-actions"><button class="btn secondary" data-agent="company" data-id="${esc(ui.result.companyId)}">업체 상세 보기</button><button class="btn primary" data-agent="reset">새 영업활동 말하기</button></div></section>`;
+      <section class="panel panel-body agent-success"><div class="agent-success-mark">✓</div><h2>${esc(ui.result.companyName)} 기록 완료</h2><p>활동 1건 · 후속업무 ${ui.result.taskCount}건을 저장했습니다.</p>${ui.result.progressMessage?`<p class="notice ${ui.result.progressWarning?'warning':''}">${esc(ui.result.progressMessage)}</p>`:''}<div class="heading-actions"><button class="btn secondary" data-agent="company" data-id="${esc(ui.result.companyId)}">업체 상세 보기</button><button class="btn primary" data-agent="reset">새 영업활동 말하기</button></div></section>`;
     const speechSupported=!!(window.SpeechRecognition||window.webkitSpeechRecognition);
     return `<div class="page-heading"><div><p class="eyebrow">DMILLION / SALES AGENT</p><h1 class="page-title">말하면 정리되는 영업 기록</h1><p class="subtitle">핸드폰으로 영업활동을 말하면 업체·활동·후속업무 초안을 만들고, 승인한 내용만 CRM에 반영합니다.</p></div></div>
       <section class="panel panel-body agent-capture">
@@ -100,15 +101,18 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
     const occurredAt=String(data.get('occurredAt')||''),date=new Date(occurredAt);
     if(Number.isNaN(date.getTime())||date>Date.now()+5*60*1000)throw new Error('완료된 활동의 실제 일시를 확인해 주세요.');
     const title=String(data.get('title')||'').trim(),summary=String(data.get('summary')||'').trim(),activityType=String(data.get('activityType')||'전화');
+    const selectedStage=progress?.read(data);
     if(!title||!summary)throw new Error('등록 제목과 활동 요약을 확인해 주세요.');
     const selected=new Set(data.getAll('taskUse').map(Number)),tasks=(ui.draft?.tasks||[]).flatMap((task,index)=>selected.has(index)?[{
       title:String(data.get('taskTitle'+index)||'').trim(),dueAt:String(data.get('taskDue'+index)||''),evidence:task.evidence
     }]:[]).filter(task=>task.title);
-    if(!confirm(`${company.name}에 활동 1건과 후속업무 ${tasks.length}건을 실제 CRM에 반영할까요?\n\n업체 단계·금액·계약 상태는 변경하지 않습니다.`))return;
+    if(!confirm(`${company.name}에 활동 1건과 후속업무 ${tasks.length}건을 ${state.demo?'데모 화면에':'실제 CRM에'} 반영할까요?\n\n${selectedStage?`${selectedStage.year}년 업체 진행 단계 → ${progress.label(selectedStage.stage)}`:'업체 진행 단계 유지'}\n제안·견적의 금액·계약 상태는 변경하지 않습니다.`))return;
     ui.busy=true;render();
     try{
+      let savedActivityId;
       if(state.demo){
         const activityId='agent-demo-'+crypto.randomUUID();state.activities.push({_id:activityId,companyId,date:date.toISOString(),type:activityType,title,summary,status:'완료',source:'crm-agent'});
+        savedActivityId=activityId;
         tasks.forEach((task,index)=>state.tasks.push({_id:activityId+'-task-'+(index+1),companyId,title:task.title,dueAt:task.dueAt,status:'todo',sourceActivityId:activityId,source:'crm-agent'}));
       }else{
         const key='agent:'+await sourceHash([companyId,date.toISOString(),ui.transcript].join('|'));
@@ -121,9 +125,12 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
           const {error}=await sb().from('crm_intake_sources').insert(source);if(error)throw error;
         }
         const {error}=await sb().rpc('crm_intake_approve',{p_id:sourceId,p_company:companyId,p_record:{title,summary,date:date.toISOString(),type:activityType},p_tasks:tasks.map(({title,dueAt})=>({title,dueAt})),p_document:null});if(error)throw error;
+        savedActivityId='intake-'+sourceId;
         await reload();
       }
-      ui.result={companyId,companyName:company.name,taskCount:tasks.length};ui.draft=null;ui.transcript='';toast('승인한 영업활동을 CRM에 반영했습니다.');
+      let progressMessage='',progressWarning=false;
+      if(selectedStage){try{await progress.save(companyId,selectedStage,{sourceActivityId:savedActivityId});progressMessage=`${selectedStage.year}년 업체 진행 단계를 ${progress.label(selectedStage.stage)}(으)로 저장했습니다.`;}catch(error){progressWarning=true;progressMessage='활동은 저장됐지만 진행 단계 변경에 실패했습니다. 업체 상세의 단계 변경에서 다시 저장해 주세요.';}}
+      ui.result={companyId,companyName:company.name,taskCount:tasks.length,progressMessage,progressWarning};ui.draft=null;ui.transcript='';toast(progressWarning?progressMessage:'승인한 영업활동을 CRM에 반영했습니다.',progressWarning);
     }finally{ui.busy=false;render();}
   }
   document.addEventListener('click',async event=>{
@@ -146,6 +153,10 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
   });
   document.addEventListener('input',event=>{
     if(event.target.id!=='agentTranscript')return;ui.transcript=event.target.value.slice(0,12000);const count=document.getElementById('agentCount');if(count)count.textContent=ui.transcript.length.toLocaleString('ko-KR')+' / 12,000';
+  });
+  document.addEventListener('change',event=>{
+    const form=event.target.closest('#agentApprovalForm');if(!form)return;
+    if(['companyId','activityType','progressYear','updateProgress'].includes(event.target.name))progress?.sync(form,['companyId','activityType','progressYear'].includes(event.target.name));
   });
   document.addEventListener('submit',async event=>{
     if(event.target.id!=='agentApprovalForm')return;event.preventDefault();
