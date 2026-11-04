@@ -156,9 +156,9 @@
     }
   }
   async function pendingChip(host) {
-    const { count } = await sb.from('members').select('user_id', { count: 'exact', head: true }).eq('role', 'pending');
+    const { count, error } = await sb.from('members').select('user_id', { count: 'exact', head: true }).eq('role', 'pending');
+    if (error || count == null) return;
     host.querySelector('.dm-pend')?.remove();
-    if (!count) return;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'dm-pend'; b.textContent = `승인 대기 ${count}명`;
     b.onclick = openPendingMembers;
     host.prepend(b);
@@ -467,4 +467,3 @@
     update: (path, patch) => docRef(path).update(patch),
   };
 })();
-

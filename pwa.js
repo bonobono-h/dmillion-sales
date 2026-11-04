@@ -1,6 +1,6 @@
 (()=>{
   if('serviceWorker' in navigator){
-    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261104-members-view-2',{scope:'./'}).catch(()=>{}),{once:true});
+    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261104-members-view-3',{scope:'./'}).catch(()=>{}),{once:true});
   }
 
   const ua=navigator.userAgent||'';
