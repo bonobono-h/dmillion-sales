@@ -9,7 +9,7 @@ import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,savePr
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
 import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
-import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-1';
+import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-2';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};

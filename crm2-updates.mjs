@@ -1,4 +1,5 @@
 import {seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
+import {PROGRESS_STAGES} from './crm2-timeline.mjs?v=20261104-records-1';
 
 const text=v=>String(v??'').trim();
 const esc=v=>text(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,7 +44,8 @@ export function buildRecentUpdates(state,{period='week',type='all',limit=8,now=n
   const allCards=[...grouped].map(([companyId,changes])=>{
     const company=companies.get(companyId),activeTasks=(state.tasks||[]).filter(t=>t.companyId===companyId&&!closedTask(t)).sort((a,b)=>text(a.dueAt||'9999').localeCompare(text(b.dueAt||'9999')));
     const latestAction=changes.find(e=>e.nextAction),nextAction=latestAction?.nextAction||activeTasks[0]?.title||company.nextAction||'';
-    return {companyId,companyName:company.name||'업체명 미등록',stage:company.stage||'단계 미정',owner:company.owner||'담당 미지정',latest:changes[0],changes,nextAction:text(nextAction),activeTaskCount:activeTasks.length,
+    const year=today.slice(0,4),saved=state.profiles?.[companyId]?.yearProgress?.[year]?.stage,stageLabel=Object.fromEntries(PROGRESS_STAGES)[saved];
+    return {companyId,companyName:company.name||'업체명 미등록',stage:stageLabel||company.stage||'단계 미정',stageYear:stageLabel?year:'',owner:company.owner||'담당 미지정',latest:changes[0],changes,nextAction:text(nextAction),activeTaskCount:activeTasks.length,
       followup:activeTasks.length?'업무 진행 중':nextAction?'다음 행동 있음':'후속 확인'};
   });
   return {cards:allCards.slice(0,Math.max(1,limit)),totalCompanies:allCards.length,totalChanges:events.length,hasMore:allCards.length>limit};
@@ -59,7 +61,7 @@ export function renderRecentUpdates(state,options={}){
     <div class="panel-body"><div class="crm-recent-grid">${model.cards.map(c=>{
       const e=c.latest,recorded=e.basis==='recorded',kind=typedLabel[e.kind],preview=c.changes.slice(1,3);
       return `<article class="crm-recent-card" data-recent-company="${esc(c.companyId)}"><div class="crm-recent-card-top"><span class="crm-recent-kind ${esc(e.kind)}">${esc(kind)}</span><span class="crm-recent-work">${esc(c.followup)}</span></div>
-        <h3>${esc(c.companyName)}</h3><div class="crm-recent-meta">영업 단계: ${esc(c.stage)} · ${esc(c.owner)}</div><div class="crm-recent-time">${recorded?'CRM 반영':'활동 날짜'} ${esc(updateTime(e))}${recorded?'':' · 반영 시각 미기록'}</div>
+        <h3>${esc(c.companyName)}</h3><div class="crm-recent-meta">${c.stageYear?esc(c.stageYear)+'년 ':''}영업 단계: ${esc(c.stage)} · ${esc(c.owner)}</div><div class="crm-recent-time">${recorded?'CRM 반영':'활동 날짜'} ${esc(updateTime(e))}${recorded?'':' · 반영 시각 미기록'}</div>
         <h4>${esc(e.title)}</h4><p class="crm-recent-summary">${esc(e.summary||'변경 내용을 상세에서 확인하세요.')}</p>
         ${preview.length?`<details class="crm-recent-more"><summary>함께 바뀐 기록 ${c.changes.length-1}건</summary>${c.changes.slice(1).map(x=>`<button type="button" data-action="recent-open" data-id="${esc(c.companyId)}" data-tab="${esc(x.tab)}" data-record="${esc(x.recordId)}">${esc(typedLabel[x.kind])} · ${esc(x.title)}</button>`).join('')}</details>`:''}
         <div class="crm-recent-next"><span>다음 행동</span><p>${esc(c.nextAction||'등록된 다음 행동 없음')}</p></div><button class="btn secondary" type="button" data-action="recent-open" data-id="${esc(c.companyId)}" data-tab="${esc(e.tab)}" data-record="${esc(e.recordId)}">변경 내용 보기 →</button></article>`;

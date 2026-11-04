@@ -21,6 +21,11 @@ test('database edit time wins stale business timestamps and exposes only safe sn
  assert.equal(buildRecentUpdates(s,options).cards[0].latest.at,Date.parse(s.docUpdatedAt['activities/a1']));
  assert.equal(s.activities[0].version,undefined);assert.equal(s.activities[0].updated_at,undefined);
 });
+test('a saved current-year progress stage takes precedence without changing the company or another year',()=>{
+ const s=fixture();s.activities=[mail()];s.profiles.c1={yearProgress:{2026:{stage:'qualification'},2027:{stage:'won'}}};
+ const r=buildRecentUpdates(s,options);assert.equal(r.cards[0].stage,'요구 확인');assert.equal(r.cards[0].stageYear,'2026');assert.equal(s.companies[0].stage,'보류');
+ assert.match(renderRecentUpdates(s,options),/2026년 영업 단계: 요구 확인/);
+});
 test('task due dates and expected close dates do not make untouched records recent',()=>{
  const s=fixture();s.tasks=[{_id:'t',companyId:'c1',title:'업무',dueAt:'2026-11-04',status:'open'}];
  s.opportunities=[{_id:'o',companyId:'c1',expectedCloseDate:'2026-11-04'}];
