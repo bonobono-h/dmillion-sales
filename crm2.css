@@ -366,6 +366,7 @@
 @media(max-width:650px){.company-detail-panel .panel-body{padding:18px}.company-detail-panel .detail-name{font-size:24px}.heading-actions{flex-wrap:wrap}}
 
 .timeline-layout{grid-template-columns:minmax(0,1fr)!important}
+.crm-calendar{margin-bottom:22px}.crm-calendar .panel-head{gap:12px;flex-wrap:wrap}.crm-calendar-filters{display:flex;gap:16px;align-items:end;flex-wrap:wrap;margin-bottom:18px}.crm-calendar-filters label{display:grid;gap:6px;min-width:170px;font-size:12px;color:var(--muted)}.crm-calendar-filters select{width:100%;min-height:40px;border:1px solid var(--line,#dce3ef);border-radius:8px;padding:8px;background:var(--surface,#fff);color:var(--text,#172a46)}.crm-calendar .flow-card{align-items:start;gap:12px}.crm-calendar .flow-card>div{min-width:0}.crm-calendar h3,.crm-calendar p{overflow-wrap:anywhere}.crm-calendar .pill{flex-shrink:0}@media(max-width:650px){.crm-calendar-filters label{min-width:0;flex:1}.crm-calendar .panel-head .btn{width:100%;text-align:center}.crm-calendar .flow-card{flex-wrap:wrap}}
 .workspace-tabs{margin-bottom:20px}
 .company-detail-panel .timeline-stage-flow{overflow-x:auto}
 

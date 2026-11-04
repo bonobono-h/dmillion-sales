@@ -8,6 +8,7 @@ import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,f
 import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261104-records-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
+import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls='')=>{const x=document.createElement(tag);if(cls)x.className=cls;return x;};
@@ -79,6 +80,7 @@ const state={
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
+  calendar:{events:[],sync:null,error:'',period:'week',attendee:''},
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
@@ -123,6 +125,8 @@ async function loadDemo(){
   state.opportunities=structuredClone(demoData.opportunities);
   state.tasks=structuredClone(demoData.tasks);
   state.goals=structuredClone(demoData.goals||[]);
+  state.calendar.events=[{sourceId:'1',title:'가상 고객사 기술 미팅',startDate:seoulDay(),endDate:seoulDay(),startTime:'14:00',endTime:'15:00',allDay:false,attendees:['데모 담당자']},{sourceId:'2',title:'가상 팀 공동 일정',startDate:seoulDay(),endDate:seoulDay(),allDay:true,attendees:[]}];
+  state.calendar.sync=null;state.calendar.error='';
   state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts=structuredClone(demoData.contacts||{});state.categories=[];
   $('modePill').textContent='데모 · 가상 업체';$('modePill').classList.add('demo');
 }
@@ -144,6 +148,10 @@ async function loadLive(){
   for(const c of state.companies){const p=state.profiles[cid(c)]||{};state.profiles[cid(c)]={accountGrade:c.grade||'',...p};}
   state.opportunities=data[4];state.tasks=data[5];state.categories=data[6];state.connected=true;
   state.goals=await getDocs(db,'targets').then(r=>r.filter(x=>x.kind==='salesGoal')).catch(()=>[]);
+  try{
+    const [events,sync]=await Promise.all([getDocs(db,'calendar'),db.doc('sync/calendar').get()]);
+    state.calendar.events=events.filter(x=>x.source==='workcenter');state.calendar.sync=sync.exists?sync.data():null;state.calendar.error='';
+  }catch(error){state.calendar.error=error.message||'조회 실패';}
   const protectedContacts=state.canWrite?await getDocs(db,'data/contacts/items'):[];
   state.contacts=Object.fromEntries(protectedContacts.map(x=>[x._id,x]));
   $('modePill').textContent=state.isAdmin?'운영 데이터 · 관리자':state.canWrite?'운영 데이터 · 영업담당':'운영 데이터 · 보기전용';
@@ -582,10 +590,11 @@ function renderHome(){
   const todo=state.tasks.filter(t=>!['done','cancelled','deleted'].includes(t.status)).sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
   const nextLegacy=state.companies.flatMap(c=>remainingLegacyActions(c,state.tasks).map(part=>({companyId:cid(c),title:part.text,dueAt:c.nextDate||null,origin:'legacy'})));
   const all=[...todo,...nextLegacy].sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
-  const now=new Date(),today=now.toISOString().slice(0,10),overdue=all.filter(t=>t.dueAt && t.dueAt.slice(0,10)<today),undated=all.filter(t=>!t.dueAt);
+  const today=seoulDay(),overdue=all.filter(t=>t.dueAt && t.dueAt.slice(0,10)<today),undated=all.filter(t=>!t.dueAt);
   const priorities=state.companies.filter(c=>['모르겠음 — 담당자 확인','기록 없음 — 메일 확보 후 일괄'].includes(state.profiles[cid(c)]?.outreachBucket));
   return `${heading('오늘의 영업','고객사 중심으로 오늘 연락할 업체와 후속 업무를 정리합니다.',btn('new-task','＋ 업무 추가','primary'))}
   <div class="stats">${stat('후속 업무',all.length+'건','기존 다음 액션 포함','◷')}${stat('기한 지난 업무',overdue.length+'건','미완료 기준','!')}${stat('일정 미정',undated.length+'건','담당자 확인 필요','?')}${stat('관계 확인 필요',priorities.length+'개','엑셀 기준 영업 분류','▦')}</div>
+  ${renderCalendar({...state.calendar,demo:state.demo})}
   <div class="two-cols">
     <section class="panel"><div class="panel-head"><div><h2 class="panel-title">다음 영업 행동</h2><p class="panel-subtitle">마감일 빠른 순서 · ${all.length}건</p></div></div>
       <div class="panel-body flow-list">${all.slice(0,30).map(t=>{
@@ -1401,6 +1410,7 @@ document.addEventListener('click',async e=>{
 document.addEventListener('change',async e=>{
   if(e.target.closest('#dialogForm [data-progress-choice]')||['meetingType','meetingStatus','companyId'].includes(e.target.name)&&e.target.closest('#dialogForm'))syncProgressFields(state,e.target.closest('form'),['meetingType','companyId','progressYear'].includes(e.target.name));
   const id=e.target.id;
+  if(id==='calendar-period'||id==='calendar-attendee'){state.calendar[id==='calendar-period'?'period':'attendee']=e.target.value;render();return;}
   if(id==='detail-progress-year'){state.timeline.year=e.target.value;updateCompanyDetailOnly();return;}
   if(id.startsWith('coverage-')){
     const key=id.slice('coverage-'.length);
