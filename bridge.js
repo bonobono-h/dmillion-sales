@@ -143,14 +143,18 @@
     s.innerHTML = `<b>${esc(me.name)}</b><button type="button" data-dm="out">로그아웃</button>`;
     host.prepend(s);
     s.querySelector('[data-dm=out]').onclick = async () => { await sb.auth.signOut(); location.reload(); };
-    if (me.role === 'admin') pendingChip(s);
+    if (me.role === 'admin') {
+      pendingChip(s);
+      setInterval(() => { if (!document.hidden) pendingChip(s); }, 60000);
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) pendingChip(s); });
+    }
   }
   async function pendingChip(host) {
     const { count } = await sb.from('members').select('user_id', { count: 'exact', head: true }).eq('role', 'pending');
     host.querySelector('.dm-pend')?.remove();
     if (!count) return;
     const b = document.createElement('button'); b.type = 'button'; b.className = 'dm-pend'; b.textContent = `승인 대기 ${count}명`;
-    b.onclick = () => { const t = [...document.querySelectorAll('#tabs button')].find(x => x.textContent.includes('권한')); t && t.click(); };
+    b.onclick = () => { location.href = 'crm2.html?view=admin'; };
     host.prepend(b);
   }
 
@@ -342,7 +346,7 @@
     box.className = 'dm-admin';
     const mine = `<h3>내 계정</h3><div class="row"><span>${esc(me.name)} · ${esc(me.login)} · ${ROLE_KO[me.role] || ''}</span><button class="btn" type="button" id="dmPw">비밀번호 변경</button></div>`;
     if (me.role !== 'admin') { box.innerHTML = mine; box.querySelector('#dmPw').onclick = changePw; return; }
-    box.innerHTML = mine + `<h3>사람 관리</h3><div class="scroll" id="dmPeople">불러오는 중…</div>
+    box.innerHTML = mine + `<h3>가입 신청 · 회원 관리</h3><button class="btn" type="button" id="dmPeopleRefresh">신청 목록 새로고침</button><div class="scroll" id="dmPeople">불러오는 중…</div>
       <div class="note">각자 로그인 화면의 <b>처음이면 가입하기</b>로 가입하면 여기에 '승인 대기'로 나타납니다. 본인이 맞는지 확인하고 권한(영업담당·보기 전용)을 골라 <b>저장</b>하세요.
       승인하지 않을 사람은 '승인 대기'로 두면 아무것도 볼 수 없습니다. 계정을 아예 지우려면 Supabase → Authentication → Users에서 삭제합니다.</div>
       <h3>데이터</h3>
@@ -350,6 +354,7 @@
       <label class="btn" style="cursor:pointer">가져오기 (JSON)<input type="file" id="dmImport" accept=".json,application/json" hidden></label><span class="note" id="dmImportMsg"></span></div>
       <div class="note">가져오기는 같은 경로의 문서를 파일 내용으로 덮어씁니다. 처음 옮길 때 한 번만 쓰고, 평소엔 백업만 받아 두세요.</div>`;
     box.querySelector('#dmPw').onclick = changePw;
+    box.querySelector('#dmPeopleRefresh').onclick = async () => { await peopleTable(box.querySelector('#dmPeople')); const h = document.querySelector('.dm-me'); if (h) await pendingChip(h); };
     await peopleTable(box.querySelector('#dmPeople'));
     box.querySelector('#dmBackup').onclick = backup;
     box.querySelector('#dmImport').onchange = e => importFile(e.target.files[0], box.querySelector('#dmImportMsg'));
@@ -358,7 +363,7 @@
     const { data: rows, error } = await sb.from('members').select('user_id,login,name,role,created_at').order('created_at');
     const data = (rows || []).sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
     if (error) { el.textContent = '명단을 불러오지 못했습니다.'; return; }
-    el.innerHTML = `<table><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th></th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}" class="${r.role === 'pending' ? 'pend' : ''}">
+    el.innerHTML = `<p class="note">승인 대기 ${data.filter(r => r.role === 'pending').length}명 · 전체 ${data.length}명</p><table><thead><tr><th>아이디</th><th>이름</th><th>권한</th><th></th></tr></thead><tbody>${data.map(r => `<tr data-u="${esc(r.user_id)}" class="${r.role === 'pending' ? 'pend' : ''}">
       <td>${esc(r.login)}</td><td><input value="${esc(r.name)}" aria-label="이름"></td>
       <td><select aria-label="권한">${Object.entries(ROLE_KO).map(([k, v]) => `<option value="${k}" ${r.role === k ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
       <td><button class="btn" type="button">저장</button></td></tr>`).join('')}</tbody></table>`;
@@ -418,4 +423,5 @@
     update: (path, patch) => docRef(path).update(patch),
   };
 })();
+
 

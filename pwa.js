@@ -1,6 +1,6 @@
 (()=>{
   if('serviceWorker' in navigator){
-    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261103-ios-1',{scope:'./'}).catch(()=>{}),{once:true});
+    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261104-members-view-1',{scope:'./'}).catch(()=>{}),{once:true});
   }
 
   const ua=navigator.userAgent||'';
@@ -19,3 +19,4 @@
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show,{once:true});else show();
 })();
+

@@ -77,7 +77,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance'}[new URLSearchParams(location.search).get('view')]||'accounts'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance',admin:'admin'}[new URLSearchParams(location.search).get('view')]||'accounts'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
@@ -100,8 +100,8 @@ function ownerChoices(){return [...new Set([...DEFAULT_OWNERS,...state.salesOwne
 function ownerFields(value=''){return `<div class="form-row"><label>디밀리언 영업 담당자<select name="salesOwner">${options(ownerChoices(),value,'담당 미지정')}</select></label><label>새 담당자 추가<input name="newOwner" maxlength="40" placeholder="새 이름 입력 시 선택한 담당자 대신 지정"></label></div>`;}
 async function chosenOwner(fd){const extra=safeText(fd.get('newOwner'));if(extra.length>40)throw new Error('담당자 이름은 40자 이하로 입력해 주세요.');const name=extra||safeText(fd.get('salesOwner'));if(extra&&!ownerChoices().includes(extra)){const id=uid();await saveDoc('crm2Owners',id,{name:extra,createdAt:new Date().toISOString()});state.salesOwners.push({_id:id,name:extra});}return name;}
 function accountTabs(){return `<div class="filter-chips account-view-tabs" aria-label="고객 관리 보기">${[['list','업체 목록'],['timeline','진행 타임라인'],['coverage','관리 현황'],['home','오늘 할 일']].map(([key,label])=>`<button data-action="account-view" data-view="${key}" class="${state.accountView===key?'active':''}">${label}</button>`).join('')}</div>`;}
-const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'고객 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기'};
-function workspaceGroup(screen=state.screen){return ['agent','intake','import'].includes(screen)?'agent':['performance','manager'].includes(screen)?'performance':'accounts';}
+const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'고객 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기',admin:'회원 관리'};
+function workspaceGroup(screen=state.screen){return screen==='admin'?'admin':['agent','intake','import'].includes(screen)?'agent':['performance','manager'].includes(screen)?'performance':'accounts';}
 function workspaceTabs(){
   const group=workspaceGroup();
   const tabs=group==='agent'?[['agent','음성·텍스트 입력'],['intake','메일·자료 등록'],['import','엑셀 비교·가져오기']]:group==='performance'?[['performance','목표 대비 실적'],['manager','전체 분석']]:[];
@@ -131,6 +131,7 @@ async function loadDemo(){
   state.calendar.events=[{sourceId:'1',title:'가상 고객사 기술 미팅',startDate:seoulDay(),endDate:seoulDay(),startTime:'14:00',endTime:'15:00',allDay:false,attendees:['데모 담당자']},{sourceId:'2',title:'가상 팀 공동 일정',startDate:seoulDay(),endDate:seoulDay(),allDay:true,attendees:[]}];
   state.calendar.sync=null;state.calendar.error='';
   state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts=structuredClone(demoData.contacts||{});state.categories=[];
+  $('adminNav').hidden=false;
   $('modePill').textContent='데모 · 가상 업체';$('modePill').classList.add('demo');
 }
 async function getDocs(db,path) {
@@ -143,6 +144,8 @@ async function loadLive(){
   state.db=db;
   state.canWrite=await user.can('data.write');state.isAdmin=await user.isOwner();state.userId=await user.id();
   state.role=window.dmSync?.whoami()?.role || (state.isAdmin?'admin':state.canWrite?'sales':'view');
+  $('adminNav').hidden=!state.isAdmin;
+  if(state.screen==='admin'&&!state.isAdmin)state.screen='accounts';
   const names=['companies','activities','projects','crm2Profiles','opportunities','tasks','crm2Categories'];
   const data=await Promise.all(names.map(x=>getDocs(db,x).catch(e=>{throw new Error(`${x} 데이터 조회에 실패했습니다: ${e.message}`);} )));
   state.salesOwners=await getDocs(db,'crm2Owners');
@@ -187,6 +190,7 @@ function heading(title,subtitle,actions=''){return `<div class="page-heading"><d
 function btn(action,label,cls='secondary',extra=''){return `<button type="button" class="btn ${cls}" data-action="${attr(action)}" ${extra}>${label}</button>`;}
 function stat(label,num,foot,icon){return `<div class="stat"><div class="stat-row"><span class="label">${esc(label)}</span><span class="stat-icon">${icon}</span></div><div class="number">${esc(num)}</div><span class="foot">${esc(foot)}</span></div>`;}
 function empty(msg,sub=''){return `<div class="empty-state"><div class="symbol">◇</div><strong>${esc(msg)}</strong>${sub?`<p>${esc(sub)}</p>`:''}</div>`;}
+function renderAdmin(){if(!state.isAdmin)return empty('관리자만 사용할 수 있습니다.');return heading('회원 관리','가입 신청자를 확인하고 권한을 선택해 승인합니다.')+(state.demo?empty('회원 관리는 운영 로그인 후 사용할 수 있습니다.','데모에서는 실제 가입자 정보를 조회하지 않습니다.'):'<section class="panel"><div id="dmAdmin"></div></section>');}
 function render(){
   // Preserve the scroll position of both independently scrollable panes whenever
   // the account page must be re-rendered (e.g. a task was completed or edited).
@@ -197,8 +201,8 @@ function render(){
   const detailScroll=detailBody?detailBody.scrollTop:null;
   const timelineScroll=timelineList?timelineList.scrollTop:null;
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===workspaceGroup()));
-  $('crumb').textContent={accounts:'고객 관리',agent:'영업 기록 입력',performance:'영업 실적'}[workspaceGroup()];
-  const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport}[state.screen];
+  $('crumb').textContent={accounts:'고객 관리',agent:'영업 기록 입력',performance:'영업 실적',admin:'회원 관리'}[workspaceGroup()];
+  const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport,admin:renderAdmin}[state.screen];
   $main.innerHTML=workspaceTabs()+(body?body():renderAccounts());
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
@@ -1498,4 +1502,3 @@ $('refreshBtn').onclick=refresh;
 $('mobileMenu').onclick=()=>document.querySelector('.sidebar').classList.toggle('open');
 
 boot();
-
