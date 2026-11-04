@@ -3,14 +3,21 @@ const plain=value=>String(value??'').trim();
 const normalize=value=>plain(value).normalize('NFKC').toLocaleLowerCase('ko')
   .replace(/주식회사|유한회사|\(주\)|㈜|[\s._·,\-()[\]{}]/g,'');
 const unique=values=>[...new Set(values.filter(Boolean))];
-const isoDay=date=>{
-  const p=value=>String(value).padStart(2,'0');
-  return `${date.getFullYear()}-${p(date.getMonth()+1)}-${p(date.getDate())}`;
-};
-const validDay=value=>/^20\d\d-\d\d-\d\d$/.test(value)&&!Number.isNaN(new Date(value+'T00:00:00').getTime())&&isoDay(new Date(value+'T00:00:00'))===value;
-const addDays=(base,days)=>{const date=new Date(base);date.setDate(date.getDate()+days);return date;};
+const seoulParts=date=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).formatToParts(date).filter(part=>part.type!=='literal').map(part=>[part.type,part.value]));
+const isoDay=date=>{const p=seoulParts(date);return `${p.year}-${p.month}-${p.day}`;};
+const localDateTime=date=>{const p=seoulParts(date);return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;};
+const validDay=value=>/^20\d\d-\d\d-\d\d$/.test(value)&&!Number.isNaN(new Date(value+'T00:00:00+09:00').getTime())&&isoDay(new Date(value+'T00:00:00+09:00'))===value;
+const addDays=(base,days)=>new Date(new Date(base).getTime()+days*86400000);
 
 export const AGENT_ACTIVITY_TYPES=['전화','미팅','첫 미팅','현장 방문','내방','화상','제안·발표'];
+
+// Anchor the activity to what happened; follow-up plans belong to tasks.
+function activityContext(text){
+  const clauses=plain(text).split(/\r?\n|(?<=[.!?。])\s+|(?<=했고|했으며|했는데|다녀왔고|만났고)\s+/).filter(Boolean);
+  const completed=clauses.filter(value=>!/(?:하기로|주기로|예정)/.test(value)&&/(?:통화|전화|미팅|회의|상담|방문|발표|제안|내방|화상).{0,12}(?:했|마쳤|완료|끝냈)|다녀왔|만났/.test(value));
+  const current=clauses.filter(value=>!/(?:내일|다음\s*주|차주|예정|하기로|주기로)/.test(value));
+  return (completed.length?completed:current).join(' ');
+}
 
 export function matchAgentCompanies(transcript,companies=[]){
   const text=normalize(transcript);
@@ -25,11 +32,12 @@ export function matchAgentCompanies(transcript,companies=[]){
 }
 
 export function activityTypeFromText(text){
-  const value=plain(text);
+  const value=activityContext(text)||plain(text);
   if(/현장\s*(?:방문|다녀)|공장\s*(?:방문|다녀)/.test(value))return '현장 방문';
   if(/첫\s*(?:미팅|회의|상담)/.test(value))return '첫 미팅';
   if(/화상|온라인\s*(?:미팅|회의)|줌|zoom/i.test(value))return '화상';
   if(/내방/.test(value))return '내방';
+  if(/통화|전화/.test(value))return '전화';
   if(/제안|발표|pt\b/i.test(value))return '제안·발표';
   if(/미팅|회의|상담|만났/.test(value))return '미팅';
   return '전화';
@@ -37,16 +45,19 @@ export function activityTypeFromText(text){
 
 export function occurredAtFromText(text,nowValue=new Date()){
   const now=new Date(nowValue);if(Number.isNaN(now.getTime()))return {value:'',basis:'확인 필요'};
-  const value=plain(text);
+  const value=activityContext(text);
+  if(!value)return {value:'',basis:'향후 일정으로 보여 활동 일시 확인 필요'};
   const explicit=value.match(/\b(20\d\d)[-.\/]\s*(\d{1,2})[-.\/]\s*(\d{1,2})\b/)||value.match(/\b(20\d\d)년\s*(\d{1,2})월\s*(\d{1,2})일/);
   if(explicit){
     const day=`${explicit[1]}-${String(explicit[2]).padStart(2,'0')}-${String(explicit[3]).padStart(2,'0')}`;
-    if(validDay(day)&&new Date(day+'T23:59:59')<=addDays(now,1))return {value:day+'T12:00',basis:'말한 날짜 · 시간 확인 필요'};
+    if(!validDay(day))return {value:'',basis:'활동 날짜 확인 필요'};
+    if(day>isoDay(now))return {value:'',basis:'향후 일정으로 보여 활동 일시 확인 필요'};
+    return {value:day+'T12:00',basis:'말한 날짜 · 시간 확인 필요'};
   }
-  if(/어제/.test(value)){const date=addDays(now,-1);return {value:isoDay(date)+'T'+String(date.getHours()).padStart(2,'0')+':'+String(date.getMinutes()).padStart(2,'0'),basis:'어제 · 입력 시각 기준'};}
-  if(/오늘|방금|아까|금일/.test(value))return {value:isoDay(now)+'T'+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),basis:'오늘 · 입력 시각 기준'};
+  if(/어제/.test(value))return {value:localDateTime(addDays(now,-1)),basis:'어제 · 입력 시각 기준 (한국시간)'};
+  if(/오늘|방금|아까|금일/.test(value))return {value:localDateTime(now),basis:'오늘 · 입력 시각 기준 (한국시간)'};
   if(/내일|다음\s*주|차주|예정|하기로/.test(value)&&!/(오늘|어제|방금|아까|통화했|미팅했|회의했|상담했|방문했|다녀왔|끝났|완료했)/.test(value))return {value:'',basis:'향후 일정으로 보여 활동 일시 확인 필요'};
-  return {value:isoDay(now)+'T'+String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0'),basis:'입력 시각 기준 · 확인 필요'};
+  return {value:localDateTime(now),basis:'입력 시각 기준 (한국시간) · 확인 필요'};
 }
 
 function dueDayFromText(text,now){
@@ -54,7 +65,7 @@ function dueDayFromText(text,now){
   if(explicit&&validDay(explicit))return explicit;
   if(/내일/.test(text))return isoDay(addDays(now,1));
   const md=plain(text).match(/\b(\d{1,2})월\s*(\d{1,2})일/);
-  if(md){const year=now.getFullYear(),day=`${year}-${String(md[1]).padStart(2,'0')}-${String(md[2]).padStart(2,'0')}`;if(validDay(day))return day;}
+  if(md){const year=seoulParts(now).year,day=`${year}-${String(md[1]).padStart(2,'0')}-${String(md[2]).padStart(2,'0')}`;if(validDay(day))return day;}
   return '';
 }
 

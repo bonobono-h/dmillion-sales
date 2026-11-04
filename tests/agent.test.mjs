@@ -38,6 +38,31 @@ test('rule draft separates unknowns and never changes a company stage',()=>{
   assert.equal(Object.hasOwn(draft,'budget'),false);
 });
 
+test('completed call is not replaced by a future visit or proposal review',()=>{
+  const text='오늘 가온정밀 담당자와 통화했어. 비전검사 제안서를 검토 중이고 예산은 아직 미정이라고 했어. 내일 내가 샘플 사진을 보내주기로 했어. 다음 주 현장 방문은 날짜가 정해지지 않았어.';
+  const draft=buildRuleAgentDraft(text,{now,candidates:[{id:'demo',name:'가온정밀'}]});
+  assert.equal(draft.activityType,'전화');
+  assert.equal(draft.tasks[0].dueAt,'2026-11-04');
+  assert.equal(activityTypeFromText('오늘 전화로 제안서를 검토했어. 다음 주 현장 방문하기로 했어.'),'전화');
+  assert.equal(activityTypeFromText('오늘 통화했고 다음 주 현장 방문하기로 했어.'),'전화');
+  assert.equal(activityTypeFromText('오늘 공장 방문을 마쳤어. 내일 내가 전화하기로 했어.'),'현장 방문');
+});
+
+test('follow-up calendar dates cannot replace the completed activity date',()=>{
+  assert.equal(occurredAtFromText('오늘 통화했어. 2026-11-04 내가 자료를 보내주기로 했어.',now).value,'2026-11-03T14:30');
+  assert.equal(occurredAtFromText('2026-11-02 현장 방문했어. 2026-11-04 내가 자료를 보내주기로 했어.',now).value,'2026-11-02T12:00');
+  assert.equal(occurredAtFromText('2026-11-04 미팅하기로 했어.',now).value,'');
+  assert.equal(occurredAtFromText('2026-11-04 현장 방문',now).value,'');
+});
+
+test('Seoul dates and times stay correct on UTC servers and over Korean midnight',()=>{
+  assert.equal(occurredAtFromText('오늘 통화했어.',new Date('2026-11-04T04:53:00Z')).value,'2026-11-04T13:53');
+  const midnight=new Date('2026-12-31T15:30:00Z');
+  assert.equal(occurredAtFromText('오늘 통화했어.',midnight).value,'2027-01-01T00:30');
+  assert.equal(occurredAtFromText('어제 통화했어.',midnight).value,'2026-12-31T00:30');
+  assert.equal(explicitAgentTasks('내일 내가 자료를 보내주기로 했어.',midnight)[0].dueAt,'2027-01-02');
+});
+
 test('AI-shaped output is bounded and invalid dates are removed',()=>{
   const fallback=buildRuleAgentDraft('오늘 쿨링랩과 통화했어.',{now,candidates:[{id:'coolinglab',name:'쿨링랩'}]});
   const result=sanitizeAgentDraft({mode:'ai',title:'x'.repeat(200),summary:'요약',activityType:'계약 완료',occurredAt:'bad',confirmedFacts:['확인'],unknowns:[],stageSuggestion:'계약 확정',tasks:[{title:'연락',dueAt:'2026-02-30',evidence:'말함'}],warnings:[]},fallback);

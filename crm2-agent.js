@@ -91,7 +91,7 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
       const safeCandidates=candidates.slice(0,5).map(candidate=>({id:candidate.id,name:candidate.name,reason:candidate.reason}));
       const {data,error}=await sb().functions.invoke('crm-agent-extract',{body:{transcript:ui.transcript,companyCandidates:safeCandidates,clientNow:new Date().toISOString()}});
       if(error){let message='AI 분석 서버를 사용할 수 없어 기본 분석으로 전환했습니다.';try{message=(await error.context.json()).error||message;}catch{}ui.analysisNotice=message;ui.draft=fallback;return;}
-      ui.draft=sanitizeAgentDraft({...data?.draft,mode:data?.mode==='ai'?'ai':'rules'},fallback);
+      ui.draft=data?.mode==='ai'?sanitizeAgentDraft({...data?.draft,mode:'ai'},fallback):fallback;
       ui.draft.companyCandidates=candidates.slice(0,5);ui.analysisNotice=data?.mode==='ai'?'AI가 초안을 만들었습니다. 저장 전 사실과 일정은 반드시 확인하세요.':'AI 키가 설정되지 않아 기본 규칙으로 분석했습니다. 기능은 정상 사용 가능하지만 정리 품질은 제한됩니다.';
     }finally{ui.busy=false;render();}
   }
