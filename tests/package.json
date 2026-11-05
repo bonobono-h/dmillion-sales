@@ -1,0 +1,1 @@
+{"name":"dmillion-crm-dom-checks","private":true,"type":"module","scripts":{"test:dom":"node workflow.dom.mjs"},"devDependencies":{"jsdom":"30.1.3"},"engines":{"node":">=22"}}
