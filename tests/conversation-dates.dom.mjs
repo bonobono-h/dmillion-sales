@@ -50,7 +50,7 @@ try{
 
  // Run the actual patched legacy editor functions, with an isolated fake database.
  const legacyHtml=await fs.readFile(new URL('index.html',root),'utf8');
- const legacyFunctions=legacyHtml.slice(legacyHtml.indexOf('function protectedConversationNote('),legacyHtml.indexOf('\nasync function runAI('));
+ const legacyFunctions=legacyHtml.slice(legacyHtml.indexOf('function manualLegacyNote('),legacyHtml.indexOf('\nasync function runAI('));
  const legacyDOM=new JSDOM('<div id="actFormWrap"></div>',{url:'http://localhost/index.html?legacy=1'});
  const clone=structuredClone(note);clone._raw=structuredClone(note);
  const writes=[];let renderCount=0,fail=false,release=null;
@@ -96,12 +96,12 @@ try{
  console.log('PASS legacy read-card and unchanged/edited day-only visit preserve actual day, completed status, precision and source metadata; no stage/deadline writes');
  legacyDOM.window.close();
  console.log('PASS actual legacy note editor unchanged-save, edit, cancel, failure/retry and double-submit preserve date/status/source; fake DB writes only title/summary/updatedAt');
- // Manual notes use this same legacy protected editor and must keep exact whitespace.
+ // Manual notes must not enter this older unconditional title/summary form.
+ // The full safe editor save/revision path is exercised in legacy-note.dom.mjs.
  const manual={...structuredClone(note),_id:'manual-note',source:'crm2-note',sourceActor:undefined,sourceRef:undefined,title:'메모',summary:'  원래 메모\n\n  ',createdBy:'manual-author'};manual._raw=structuredClone(manual);ctx.acts.push(manual);
- const resetManual=()=>{view.editAct=manual._id;view.actForm=company._id;view.actDraft=null;ctx.renderActForm(company);return ctx.$('conversationNoteF');};
- const manualWrites=writes.length;form=resetManual();assert.equal(form.elements.summary.value,manual.summary);assert.equal(form.elements.summary.hasAttribute('maxlength'),false);await form.onsubmit({preventDefault(){}});assert.equal(writes.length,manualWrites);
- form=resetManual();const rawManual='  수정한 메모\n\n\t줄바꿈  그대로\n  ';form.elements.summary.value=rawManual;await form.onsubmit({preventDefault(){}});assert.equal(writes.length,manualWrites+1);assert.equal(writes.at(-1).data.summary,rawManual);assert.deepEqual(Object.keys(writes.at(-1).data).sort(),['summary','title','updatedAt']);assert.equal(manual.date,null);assert.equal(manual.createdBy,'manual-author');assert.equal(manual.source,'crm2-note');
- console.log('PASS legacy manual-note unchanged-save and edited-save preserve raw whitespace, author, date and source');
+ const manualWrites=writes.length;view.editAct=manual._id;view.actForm=company._id;view.actDraft=null;ctx.renderActForm(company);
+ assert.equal(ctx.$('conversationNoteF'),null);assert.equal(ctx.$('actF'),null);assert.match(ctx.$('actFormWrap').textContent,/내용 수정/);assert.equal(writes.length,manualWrites);assert.equal(manual.date,null);assert.equal(manual.createdBy,'manual-author');assert.equal(manual.source,'crm2-note');
+ console.log('PASS legacy manual notes cannot enter an unconditional structured editor; safe CAS edit route tested separately');
  console.log('PASS no network/authentication/production writes');
 } finally {
  for(const timer of timers)clearInterval(timer);globalThis.setInterval=originalInterval;

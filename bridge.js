@@ -273,6 +273,31 @@
   const denied = e => err(/row-level security|permission/i.test(e?.message || '') ? 'permission-denied' : (e?.code === 'P0002' ? 'not-found' : 'unavailable'), e?.message);
 
   function docRef(path) {
+    // Only the new safe editors use this guard; legacy set/update/login flows are unchanged.
+    async function withWriteIdentity(expectedUserId, action) {
+      let changed = false, subscription;
+      const controller = new AbortController();
+      const assertIdentity = () => {
+        if (changed || typeof expectedUserId !== 'string' || !expectedUserId.trim() || me?.id !== expectedUserId)
+          throw err('unauthenticated', '로그인 계정이 바뀌었거나 확인되지 않습니다. 입력 내용을 복사해 두고 기록을 확인해 주세요.');
+        if (!['admin', 'sales'].includes(me?.role)) throw err('permission-denied', '저장 권한이 없습니다.');
+      };
+      assertIdentity();
+      try {
+        if (typeof sb.auth?.onAuthStateChange !== 'function' || typeof sb.auth?.getUser !== 'function')
+          throw err('unauthenticated', '현재 로그인 계정을 확인할 수 없습니다. 입력 내용은 그대로 남아 있습니다.');
+        subscription = sb.auth.onAuthStateChange((_event, session) => {
+          if (session?.user?.id !== expectedUserId) { changed = true; controller.abort(); }
+        })?.data?.subscription;
+        if (typeof subscription?.unsubscribe !== 'function') throw err('unauthenticated', '현재 로그인 상태를 확인할 수 없습니다.');
+        // `me` and userCap are boot snapshots, not evidence of the active Supabase account.
+        const result = await sb.auth.getUser();
+        assertIdentity();
+        if (result.error || result.data?.user?.id !== expectedUserId)
+          throw err('unauthenticated', '현재 로그인 계정을 확인할 수 없습니다. 입력 내용을 복사해 두고 기록을 확인해 주세요.');
+        return await action({assertIdentity,signal:controller.signal});
+      } finally { subscription?.unsubscribe(); }
+    }
     return {
       id: idOf(path), path,
       onSnapshot(next, onErr) {
@@ -287,11 +312,93 @@
         const { data: row, error } = await sb.from('docs').upsert({ path, data: clean }, { onConflict: 'path' }).select('path,data,version,updated_at,updated_by').single();
         if (error) throw denied(error); applyLocal(row);
       },
+      // INSERT-only creation: retrying a new note can never replace an existing row.
+      async createIfAbsent(data, { expectedUserId } = {}) {
+        const clean = JSON.parse(JSON.stringify(data || {}));
+        if (clean.createdBy !== expectedUserId) throw err('unauthenticated', '메모 작성 계정을 확인할 수 없습니다.');
+        return withWriteIdentity(expectedUserId, async ({assertIdentity,signal}) => {
+          const canonical = value => JSON.stringify(value && typeof value === 'object'
+            ? Array.isArray(value) ? value.map(item => JSON.parse(canonical(item)))
+              : Object.fromEntries(Object.keys(value).sort().map(key => [key, JSON.parse(canonical(value[key]))]))
+            : value);
+          const reconcile = async () => {
+            assertIdentity();
+            const current = await docRef(path).get();
+            assertIdentity();
+            if (current.exists && canonical(current.data()) === canonical(clean)) {
+              applyLocal({ path, data: current.data(), version: current.version, updated_at: current.updatedAt, updated_by: current.updatedBy });
+              return current;
+            }
+            if (current.exists) throw err('conflict', '같은 메모가 이미 저장되었고 내용이 달라졌습니다. 입력 내용을 복사해 두고 최신 기록을 확인해 주세요.');
+            return null;
+          };
+          try {
+            const { data: row, error } = await sb.from('docs').insert({ path, data: clean }).select('path,data,version,updated_at,updated_by').abortSignal(signal).single();
+            assertIdentity();
+            if (error) throw denied(error);
+            if (!row) throw err('unavailable', '저장 결과를 확인할 수 없습니다.');
+            // No optional network read after persistence has been confirmed.
+            applyLocal(row); return docSnap(path, row);
+          } catch (error) {
+            assertIdentity();
+            if (error.code === 'permission-denied' || error.code === 'unauthenticated') throw error;
+            // A lost response or unique-path conflict may be this exact prior creation.
+            // Canonical equality handles JSONB key order; a later edit fails closed.
+            try { const accepted = await reconcile(); if (accepted) return accepted; }
+            catch (readError) { if (['conflict', 'unauthenticated', 'permission-denied'].includes(readError.code)) throw readError; }
+            throw error;
+          }
+        });
+      },
       async update(patch) {
         if (me?.role === 'view') throw err('permission-denied', '보기 전용');
         const { set, remove } = splitPatch(patch);
         const { data, error } = await sb.rpc('doc_merge', { p_path: path, p_patch: set, p_remove: remove });
         if (error) throw denied(error); const row = Array.isArray(data) ? data[0] : data; if (row) applyLocal(row);
+      },
+      // Atomic CAS for the in-place text editor. docs_touch remains authoritative for
+      // version/updated_at/updated_by; existing RLS applies without schema changes.
+      async updateIfVersion(patch, expectedVersion, { baseData, editId } = {}) {
+        if (!me || !['admin', 'sales'].includes(me.role)) throw err('permission-denied', '수정 권한이 없습니다.');
+        if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1 || !baseData || typeof baseData !== 'object' || Array.isArray(baseData) || !editId)
+          throw err('invalid-argument', '원본 버전을 확인할 수 없습니다.');
+        const next = clone({ ...baseData, ...patch });
+        if (!Array.isArray(next.crmTextEdits) || !next.crmTextEdits.some(entry => entry.editId === editId))
+          throw err('invalid-argument', '원문 보관 이력이 없습니다.');
+        const operation = next.crmTextEdits.find(entry => entry.editId === editId);
+        return withWriteIdentity(operation.by, async ({assertIdentity,signal}) => {
+        const reconcile = async () => {
+          assertIdentity();
+          const current = await docRef(path).get();
+          assertIdentity();
+          if (current.exists && current.data()?.crmTextEdits?.some(entry => entry && ['editId','field','before','beforePresent','after','baseVersion','at','by'].every(key => entry[key] === operation[key]))) {
+            // Refresh the same version-ordered collection cache as a normal response.
+            applyLocal({ path, data: current.data(), version: current.version, updated_at: current.updatedAt, updated_by: current.updatedBy });
+            return current;
+          }
+          return null;
+        };
+        try {
+          const { data: row, error } = await sb.from('docs').update({ data: next })
+            .eq('path', path).eq('version', expectedVersion).select('path,data,version,updated_at,updated_by').abortSignal(signal).maybeSingle();
+          assertIdentity();
+          if (error) throw denied(error);
+          if (!row) {
+            // A retry of an already accepted save is a success, never a second write.
+            const accepted = await reconcile();
+            if (accepted) return accepted;
+            throw err('conflict', '다른 곳에서 변경되었거나 삭제된 기록입니다. 입력 내용을 복사해 둔 뒤 최신 기록을 다시 열어 주세요.');
+          }
+          applyLocal(row); return docSnap(path, row);
+        } catch (error) {
+          assertIdentity();
+          if (error.code === 'conflict' || error.code === 'permission-denied' || error.code === 'unauthenticated') throw error;
+          // Lost responses may hide a committed write. Check its stable ID, but never
+          // retry the mutation here or replace subsequent edits with this draft.
+          try { const accepted = await reconcile(); if (accepted) return accepted; } catch (readError) { if (['unauthenticated','permission-denied'].includes(readError.code)) throw readError; }
+          throw error;
+        }
+        });
       },
       async delete() {
         if (me?.role === 'view') throw err('permission-denied', '보기 전용');

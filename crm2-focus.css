@@ -654,3 +654,18 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   .crm-board-page .crm-focus-note { padding: 16px; }
   .crm-board-hint, .crm-board-scroll-hint { margin-bottom: 10px; }
 }
+
+/* Edit the text already on the page, without mixing it with record creation. */
+.crm-text-edit-heading, .crm-text-meta-tools, .crm-linked-action-tools { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm-text-edit-heading > :first-child { flex: 1; min-width: 0; }
+.crm-text-edit-heading h3 { margin-top: 0; }
+.crm-text-edit-heading .crm-edit-text, .crm-text-meta-tools .crm-edit-text { flex: 0 0 auto; }
+.crm-edit-text { min-height: 36px; padding: 6px 13px; font-size: 12px; white-space: nowrap; }
+.crm-text-meta-tools { align-items: center; }
+.crm-meeting-entry .crm-text-edit-heading > strong { font-size: 13px; line-height: 1.7; }
+.crm-freeform-note textarea[readonly] { background: #f5f6fb; }
+@media (max-width: 640px) { .crm-linked-action-tools { width: 100%; justify-content: flex-end; } }
+.crm-text-revisions { max-height: 260px; overflow: auto; font-size: 12px; }
+.crm-text-revisions summary { cursor: pointer; padding: 8px 0; }
+.crm-text-revisions article { border-top: 1px solid #e5e7f1; padding: 10px 0; }
+.crm-text-revisions pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; tab-size: 4; }

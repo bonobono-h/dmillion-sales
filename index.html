@@ -13,7 +13,7 @@
 <meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 <script src="config.js?v=20261027"></script>
 <script src="supabase.js?v=2.117.3"></script>
-<script src="bridge.js?v=20261027b"></script>
+<script src="bridge.js?v=20261110-legacy-note-1"></script>
 </head><body>
 <title>디밀리언 영업 관리</title>
 <style>
@@ -828,6 +828,7 @@ header.top .role{border:0;padding:0;background:none}
 .kwarn .kh b,.kwarn .kh .kn{color:var(--warn)}
 .kwarn .ci{border-bottom-color:color-mix(in srgb,var(--warn) 25%,transparent)}
 </style>
+<link rel="stylesheet" href="legacy-readable.css?v=20261110-legacy-note-1">
 
 <header class="top">
   <div class="topbar">
@@ -929,6 +930,9 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const NS = 'http://www.w3.org/2000/svg';
 let MAP = null, db = null, canWrite = true;
 let companies = [], acts = [];
+const legacyDocVersions = {};
+let legacyTextEditorPromise = null;
+let legacyNoteEntryPromise = null;
 let view = {prov:null, muni:null, sel:null, form:null, actForm:null, editAct:null};
 let loaded = {c:false, a:false};
 let assets = null, sample = null, downloads = null, isAdmin = false;
@@ -946,6 +950,71 @@ const cw = () => canWrite !== false;
 const canSeeContacts = () => isAdmin || canWrite === true || Object.keys(contacts).length > 0;
 const roleLabel = () => isAdmin ? '관리자' : canWrite === true ? '영업담당' : canWrite === false ? '보기 전용' : '확인 중';
 const customers = () => companies.filter(c => !PART(c));
+
+// Only the new body-only editor uses this adapter. The older structured editors remain available.
+function legacySnapshotRows(collection,snapshot){
+  const previous = collection === 'companies' ? companies : acts;
+  return snapshot.docs.map(doc => {
+    const key = collection + '/' + doc.id, current = previous.find(row => row._id === doc.id);
+    if (current && Number.isSafeInteger(doc.version) && legacyDocVersions[key] > doc.version) return current;
+    if (Number.isSafeInteger(doc.version)) legacyDocVersions[key] = doc.version;
+    const data = doc.data();
+    return collection === 'activities' ? {...data,_id:doc.id,_raw:structuredClone(data)} : {...data,_id:doc.id};
+  });
+}
+function legacyTextState(){ return {companies:companies.slice(),activities:acts.slice(),canWrite:canWrite === true || isAdmin,userId:myId,db,demo:false,docVersions:{...legacyDocVersions}}; }
+async function openLegacyText(button){
+  if (!(canWrite === true || isAdmin)) return toast('수정 권한을 확인해 주세요.');
+  button.disabled = true;
+  try {
+    legacyTextEditorPromise ||= import('./legacy-text-edit.mjs?v=20261110-legacy-edit-1').then(({createLegacyTextEditor}) => createLegacyTextEditor({
+      getState:legacyTextState,notify:toast,onSaved:({state,edit,result}) => {
+        const key = edit.collection + '/' + edit.id, version = state.docVersions[key];
+        if (version >= (legacyDocVersions[key] || 0)) {
+          const saved = state[edit.collection].find(row => row._id === edit.id);
+          if (saved) {
+            const rows = edit.collection === 'companies' ? companies : acts;
+            const index = rows.findIndex(row => row._id === edit.id);
+            if (index >= 0 && result.recordData) rows[index] = edit.collection === 'activities' ? {...result.recordData,_id:edit.id,_raw:structuredClone(result.recordData)} : {...result.recordData,_id:edit.id};
+          }
+          legacyDocVersions[key] = version;
+        }
+        actIdx = null; renderAll();
+      }
+    })).catch(error => { legacyTextEditorPromise = null; throw error; });
+    const editor = await legacyTextEditorPromise;
+    await editor.open({collection:button.dataset.legacyCollection,id:button.dataset.legacyId,field:button.dataset.legacyField,label:button.dataset.legacyLabel || '내용',context:button.dataset.legacyContext || '',directField:button.dataset.legacyDirect === 'true'});
+  } catch { toast('내용 수정 기능을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'); }
+  finally { button.disabled = false; }
+}
+function legacyNoteState(){ return {...legacyTextState(),userCap}; }
+async function openLegacyNote(button,companyId){
+  if (!(canWrite === true || isAdmin) || !myId) return toast('메모 작성 권한과 로그인 상태를 확인해 주세요.');
+  button.disabled = true;
+  try {
+    legacyNoteEntryPromise ||= import('./legacy-note-entry.mjs?v=20261110-legacy-note-1').then(({createLegacyNoteEntry}) => createLegacyNoteEntry({
+      getState:legacyNoteState,notify:toast,onSaved:({id,companyId,recordData,version}) => {
+        const key = 'activities/' + id, known = legacyDocVersions[key] || 0;
+        if (!known || (Number.isSafeInteger(version) && version >= known)) {
+          const saved = {...recordData,_id:id,_raw:structuredClone(recordData)}, index = acts.findIndex(row => row._id === id);
+          if (index < 0) acts.push(saved); else acts[index] = saved;
+          if (Number.isSafeInteger(version)) legacyDocVersions[key] = version;
+        }
+        if (view.sel === companyId) view.dtab = 'hist';
+        actIdx = null; renderAll();
+      }
+    })).catch(error => { legacyNoteEntryPromise = null; throw error; });
+    (await legacyNoteEntryPromise).open(companyId);
+  } catch { toast('메모 입력창을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.'); }
+  finally { button.disabled = false; }
+}
+function legacyCompanyText(c,field,label){
+  return `<section class="sec"><div class="legacy-text-heading"><h4>${esc(label)}</h4>${legacyEditButton('companies',c._id,field,label,c.name)}</div><div class="legacy-text">${esc(c[field] || '아직 내용이 없습니다.')}</div></section>`;
+}
+function legacyEditButton(collection,id,field,label,context,directField=true){
+  return canWrite === true || isAdmin ? `<button type="button" class="legacy-text-edit" data-legacy-collection="${esc(collection)}" data-legacy-id="${esc(id)}" data-legacy-field="${esc(field)}" data-legacy-direct="${directField}" data-legacy-label="${esc(label)}" data-legacy-context="${esc(context)}" aria-label="${esc(label)} 수정">${esc(collection === 'activities' ? label + ' 수정' : '수정')}</button>` : '';
+}
+document.addEventListener('click', event => { const button = event.target.closest?.('[data-legacy-field]'); if (button) openLegacyText(button); });
 
 // ---------- helpers ----------
 const fmtDate = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return iso; const p = n => String(n).padStart(2,'0'); const hasT = /T\d/.test(iso); return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())}` + (hasT && !/T00:00(:00)?(\.000)?Z?$/.test(iso) ? ` ${p(d.getHours())}:${p(d.getMinutes())}` : ''); };
@@ -982,7 +1051,7 @@ function aidx(){
   if (actIdxSrc === acts && actIdx) return actIdx;
   const m = new Map(), now = new Date();
   for (const a of acts) { const r = m.get(a.companyId) || {last:'', first:'', n:0};
-    if (a.status !== '취소') { r.n++; if (a.date && new Date(a.date) <= now) { if (a.date > r.last) r.last = a.date; if (!r.first || a.date < r.first) r.first = a.date; } }
+    if (legacyContactActivity(a) && a.status !== '취소') { r.n++; if (a.date && new Date(a.date) <= now) { if (a.date > r.last) r.last = a.date; if (!r.first || a.date < r.first) r.first = a.date; } }
     m.set(a.companyId, r); }
   actIdx = m; actIdxSrc = acts; return m;
 }
@@ -1134,7 +1203,7 @@ function renderList(){
     const lc = lastContact(c), fu = followUp(c);
     b.innerHTML = `<span class="bar" style="background:var(--s-${COLOR(c)})"></span>
       <span style="min-width:0"><span class="nm">${esc(c.name)}</span>${c.star ? ' <span class="star" title="중요 업체">★★</span>' : ''}${PART(c) ? ' <span class="kindtag">협력사</span>' : ''}${c.channel ? ` <span class="chip ${c.channel==='아웃바운드'?'ch-out':'ch-in'}">${esc(c.channel)}</span>` : ''}
-      <div class="sub">${esc(c.stage)}${c.owner ? ' · ' + esc(c.owner) : ''} · ${esc(regionLabel(c))}${c.nextAction ? ' · ' + esc(c.nextAction) : c.bizDetail ? ' · ' + esc(c.bizDetail) : ''}</div></span>
+      <div class="sub">${esc(c.stage)}${c.owner ? ' · ' + esc(c.owner) : ''} · ${esc(regionLabel(c))}</div>${c.nextAction || c.needs || c.bizDetail ? `<div class="legacy-row-next">${c.nextAction ? '다음 · ' : ''}${esc(c.nextAction || c.needs || c.bizDetail)}</div>` : ''}</span>
       <span class="when"><b class="${fu ? 'stale' : ''}" title="${fu ? '재컨택 후보 · 90일 넘게 연락 없음' : '최근 컨택'}">${lc ? fmtDate(lc) : '–'}</b>${c.nextDate && !STOP.includes(c.stage) ? `다음 ${esc(fmtDate(c.nextDate).slice(5))}` : lc ? '최근 컨택' : '기록 없음'}</span>`;
     b.onclick = () => select(c._id); el.append(b);
   }
@@ -1144,7 +1213,7 @@ function renderList(){
 function upcoming(){
   const now = Date.now() - 864e5; const out = [];
   for (const c of companies) if (c.nextDate && new Date(c.nextDate).getTime() >= now && !['보류','드랍·탈락'].includes(c.stage)) out.push({date:c.nextDate, id:c._id, name:c.name, kind:'다음 액션', k:'kn', what:c.nextAction || '다음 일정', label:`${c.name} — ${c.nextAction || '다음 일정'}`});
-  for (const a of acts) if (a.status === '예정' && a.date && new Date(a.date).getTime() >= now) { const c = companies.find(x => x._id === a.companyId); if (c && !(c.nextDate === a.date)) out.push({date:a.date, id:c._id, name:c.name, kind:a.type || '일정', k:'ka', what:a.title || a.type || '', label:`${c.name} — ${a.title || a.type}`}); }
+  for (const a of acts) if (legacyContactActivity(a) && a.status === '예정' && a.date && new Date(a.date).getTime() >= now) { const c = companies.find(x => x._id === a.companyId); if (c && !(c.nextDate === a.date)) out.push({date:a.date, id:c._id, name:c.name, kind:a.type || '일정', k:'ka', what:a.title || a.type || '', label:`${c.name} — ${a.title || a.type}`}); }
   return out.sort((a,b) => a.date.localeCompare(b.date));
 }
 const WD = ['일','월','화','수','목','금','토'];
@@ -1186,7 +1255,7 @@ function renderDetail(){
   const ctc = contacts[c._id] || {}, seeCt = canSeeContacts();
   const idx = STAGES.indexOf(c.stage), main = STAGES.slice(0,9);
   const steps = main.map((s,i) => `<span class="${s===c.stage?'on':(idx>=0&&idx<9&&i<idx?'done':'')}">${s}</span>`).join('');
-  const my = acts.filter(a => a.companyId === c._id).sort((a,b) => (b.date||'').localeCompare(a.date||''));
+  const my = acts.filter(a => a.companyId === c._id).sort((a,b) => legacyHistoryTime(b).localeCompare(legacyHistoryTime(a)));
   const kv = [
     ['구분', c.kind], ['영업 구분', c.channel], ['유입 경로', c.source], ['소개·경로', c.referrer && c.referrer !== c.source ? c.referrer : ''], ['업종', c.industry], ['업종 상세', c.bizDetail], ['관심 솔루션', (c.solutions||[]).join(', ')],
     ['대표자·담당자', c.contactPerson], ...(seeCt ? [['연락처', ctc.phone], ['이메일', ctc.email]] : [['연락처', '__LOCK__']]), ['주소', c.address || (c.region ? c.region : '')],
@@ -1206,17 +1275,21 @@ function renderDetail(){
       <div class="dtitle"><h3>${esc(c.name)}</h3>${c.star ? '<span class="star" title="중요 업체">★★</span>' : ''}${PART(c) ? '<span class="kindtag">협력사</span>' : ''}<span class="chip"><i style="background:var(--s-${COLOR(c)})"></i>${esc(c.stage)}</span>
         ${STEP_OF[c.stage] ? `<span class="muted">영업 7단계 ${STEP_OF[c.stage]}</span>` : ''}
         <span style="flex:1"></span>
-        ${cw() ? `<button class="btn ghost" type="button" id="editCo">수정</button>` : ''}
+        ${cw() ? `<button class="btn ghost" type="button" id="editCo">업체 정보 수정</button>` : ''}
         <button class="btn ghost" type="button" id="closeCo" aria-label="닫기">닫기</button></div>
-      ${c.checkNote ? `<div class="alert"><b>확인 필요</b>\n${esc(c.checkNote)}</div>` : ''}
+      ${c.checkNote ? `<div class="alert"><div class="legacy-text-heading"><b>확인 필요</b>${legacyEditButton('companies',c._id,'checkNote','확인 필요',c.name)}</div><div class="legacy-text">${esc(c.checkNote)}</div></div>` : ''}
       ${pipeHTML(c)}
       ${cw() ? `<label class="muted" style="display:flex;gap:8px;align-items:center;margin:-6px 0 12px">단계 변경 <select id="stageSel" style="width:auto">${STAGES.map(s => `<option ${s===(view.reasonFor?.id===c._id ? view.reasonFor.stage : c.stage)?'selected':''}>${s}</option>`).join('')}</select></label>` : ''}
       <div id="reasonWrap"></div>
-      <div class="next">다음 액션 · ${c.nextDate ? `<b>${fmtDate(c.nextDate)}</b> · ` : '<span class="danger">일정 없음</span> · '}${esc(c.nextAction || '미정')}</div>
+      <div class="next"><div class="legacy-text-heading"><b>다음 액션</b>${legacyEditButton('companies',c._id,'nextAction','다음 액션',c.name)}</div><div class="legacy-text">${esc(c.nextAction || '미정')}</div><div class="legacy-next-date">${c.nextDate ? '일정 · ' + esc(fmtDate(c.nextDate)) : '일정 미정'}</div></div>
+      <details class="legacy-company-notes"><summary>업체 니즈·메모 보기 / 수정</summary>${legacyCompanyText(c,'needs','니즈')}${legacyCompanyText(c,'memo','메모')}</details>
+      ${canWrite === false && !isAdmin ? '<p class="legacy-history-help">보기 전용 계정입니다. 내용 수정은 관리자·영업담당 권한이 필요합니다.</p>' : ''}
       ${coTrackHTML(c)}
       <div class="dtabs" role="tablist">${[['hist', '히스토리·일정', my.length], ['info', '업체 정보', ''], ['docs', '문서·구성표', docs.length + (isAdmin ? myBoms.length : 0)]].map(([k,l,n]) => `<button type="button" role="tab" class="dtab ${dtab === k ? 'on' : ''}" data-dtab="${k}" aria-selected="${dtab === k}">${l}${n !== '' ? ` <b>${n}</b>` : ''}</button>`).join('')}</div>
       <div class="dpane" data-pane="hist" ${dtab === 'hist' ? '' : 'hidden'}>
-      <div class="sec"><h4>히스토리 <span>${cw() ? '<button class="linkbtn" type="button" id="addAct">+ 기록 추가</button>' : ''}</span></h4>
+      <div class="sec"><h4>히스토리 <span>${(canWrite === true || isAdmin) && myId ? '<button class="btn primary" type="button" id="addAct">+ 메모 남기기</button>' : ''}</span></h4>
+        ${cw() ? '<p class="legacy-history-help">고칠 기록의 <b>내용 수정</b>을 누르면 원문이 바로 열립니다. 업체 정보 수정은 회사 정보만 바꿉니다.</p>' : ''}
+        ${(canWrite === true || isAdmin) && myId ? '<details class="legacy-structured-choice"><summary>통화·방문 보고서가 필요할 때</summary><p>실제 활동 날짜와 유형, 출장 보고를 따로 남길 때만 사용하세요.</p><button class="btn ghost" type="button" id="addStructuredAct">통화·방문 보고서 작성</button></details>' : ''}
         <div id="actFormWrap"></div>
         ${my.length ? `<ul class="tl">${tlItems(my)}</ul>` : '<div class="muted">기록이 없습니다.</div>'}
       </div>
@@ -1224,7 +1297,7 @@ function renderDetail(){
       </div>
       <div class="dpane" data-pane="info" ${dtab === 'info' ? '' : 'hidden'}>
       ${ownerSecHTML(c)}
-      <div class="sec"><h4>기본 정보</h4><dl class="kv">${kv.map(([k,v]) => `<dt>${k}</dt><dd>${v === '__LOCK__' ? '<span class="lockline">영업담당자 이상만 볼 수 있습니다</span>' : esc(v)}</dd>`).join('')}</dl></div>
+      <div class="sec"><h4>기본 정보</h4><dl class="kv">${kv.map(([k,v]) => { const field = {'니즈':'needs','메모':'memo','업종 상세':'bizDetail','규모·예산 메모':'scale'}[k]; return `<dt>${k}</dt><dd>${v === '__LOCK__' ? '<span class="lockline">영업담당자 이상만 볼 수 있습니다</span>' : `<div class="legacy-inline-editor"><span class="legacy-text">${esc(v)}</span>${field ? legacyEditButton('companies',c._id,field,k,c.name) : ''}</div>`}</dd>`; }).join('')}</dl></div>
       ${coProjHTML(c)}
       ${progSecHTML(c)}
       <div class="sec"><h4>계약 내용</h4>${hasContract ? `<dl class="kv">${[['계약일', fmtDate(ct.date)],['계약 금액', won(ct.amount)],['범위', ct.scope],['메모', ct.note]].filter(([,v])=>v).map(([k,v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>` : (pjFor(c._id).some(p => p.amount) ? '<div class="muted">과제 계약은 위 연계 과제에 있습니다. 과제 밖 개별 계약만 수정에서 입력하세요.</div>' : '<div class="muted">아직 계약 정보가 없습니다. 수정에서 입력하세요.</div>')}</div>
@@ -1255,7 +1328,13 @@ function renderDetail(){
       view.reasonFor = null; renderReason(c);
       await save(() => db.doc('companies/' + c._id).update({...stageUpd(c, v), updatedAt: new Date().toISOString()}), '단계를 바꿨습니다', `${c.name} → ${v}`);
     };
-    $('addAct').onclick = () => { view.dtab = 'hist'; view.editAct = null; view.actDraft = null; view.actForm = view.actForm ? null : c._id; renderActForm(c); };
+    if ($('addAct')) $('addAct').onclick = event => openLegacyNote(event.currentTarget,c._id);
+    if ($('addStructuredAct')) $('addStructuredAct').onclick = () => {
+      view.dtab = 'hist';
+      // Opening the memo overlay never clears this separate report draft.
+      if (view.actForm !== c._id) { view.editAct = null; view.actDraft = null; view.actForm = c._id; }
+      renderActForm(c); $('actFormWrap').scrollIntoView({block:'nearest'});
+    };
     $('addDoc').onclick = () => { view.docForm = view.docForm ? null : c._id; renderDocForm(c); };
     card.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { view.editAct = b.dataset.edit; view.actDraft = null; view.actForm = c._id; renderActForm(c); $('actFormWrap').scrollIntoView({block:'nearest'}); });
     card.querySelectorAll('[data-done]').forEach(b => b.onclick = () => protectedConversationNote(acts.find(a=>a._id===b.dataset.done))?toast('확인 메모는 완료 활동으로 바꾸지 않습니다'):save(() => db.doc('activities/' + b.dataset.done).update({status:'완료'}), '완료로 표시했습니다', c.name));
@@ -1278,9 +1357,9 @@ function renderDetail(){
 
 function tlItems(my){
   const now = new Date().toISOString(); let placed = false;
-  const fut = my.some(a => (a.date || '') > now);
+  const fut = my.some(a => legacyContactActivity(a) && (a.date || '') > now);
   return my.map(a => { let s = '';
-    if (fut && !placed && (a.date || '') <= now) { placed = true; s = `<li class="todayline" aria-hidden="true"><span>오늘 ${shortDate(now)}</span></li>`; }
+    if (fut && !placed && legacyContactActivity(a) && (a.date || '') <= now) { placed = true; s = `<li class="todayline" aria-hidden="true"><span>오늘 ${shortDate(now)}</span></li>`; }
     return s + actItemHTML(a); }).join('') + (fut && !placed ? `<li class="todayline" aria-hidden="true"><span>오늘 ${shortDate(now)}</span></li>` : '');
 }
 
@@ -1291,6 +1370,7 @@ function homeSchedule(){
   const inR = iso => { const t = new Date(iso).getTime(); return t >= lo && t <= hi; };
   for (const c of companies) if (c.nextDate && !STOP.includes(c.stage) && inR(c.nextDate)) out.push({date:c.nextDate, id:c._id, name:c.name, kind:'다음 액션', k:'next', what:c.nextAction || '다음 일정', done:'co:' + c._id});
   for (const a of acts) {
+    if (!legacyContactActivity(a)) continue;
     const c = companies.find(x => x._id === a.companyId); if (!c) continue;
     if (a.status === '예정' && a.date && inR(a.date) && c.nextDate !== a.date) out.push({date:a.date, id:c._id, name:c.name, kind:a.type || '일정', k:'act', what:a.title || a.type || '', done:'act:' + a._id});
     if (a.nextDue && a.nextAction && !a.nextDone && !STOP.includes(c.stage) && inR(a.nextDue + 'T00:00')) out.push({date:a.nextDue + 'T00:00', id:c._id, name:c.name, kind:'후속 조치', k:'due', what:a.nextAction, done:'due:' + a._id});
@@ -1317,6 +1397,7 @@ function weekItems(fromKey, toKey){
   const out = [], inR = k => k && k >= fromKey && k <= toKey;
   for (const c of companies) { const k = dayKey(c.nextDate); if (inR(k) && !STOP.includes(c.stage)) out.push({k, id:c._id, name:c.name, what:c.nextAction || '다음 일정', t:'next', time:shortDate(c.nextDate).split(' ')[1] || ''}); }
   for (const a of acts) {
+    if (!legacyContactActivity(a)) continue;
     const c = companies.find(x => x._id === a.companyId); if (!c) continue;
     if (a.status === '예정' && inR(dayKey(a.date)) && c.nextDate !== a.date) out.push({k:dayKey(a.date), id:c._id, name:c.name, what:`${a.type} ${a.title || ''}`.trim(), t:'act', time:shortDate(a.date).split(' ')[1] || ''});
     if (a.nextDue && a.nextAction && !a.nextDone && inR(a.nextDue)) out.push({k:a.nextDue, id:c._id, name:c.name, what:a.nextAction, t:'due'});
@@ -1357,7 +1438,7 @@ function homeHTML(){
   const live = c => pjFor(c._id).some(activePj);
   const deals = customers().filter(c => ['컨택 중','첫 미팅','현장 방문','제안','과제신청 준비','과제 신청'].includes(c.stage) && !followUp(c) && !live(c))
     .sort((a, b) => (a.nextDate || '9999').localeCompare(b.nextDate || '9999') || (lastContact(b) || '').localeCompare(lastContact(a) || ''));
-  const dealCard = c => { const last = acts.filter(a => a.companyId === c._id && a.status === '완료').sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+  const dealCard = c => { const last = acts.filter(a => a.companyId === c._id && legacyContactActivity(a) && a.status === '완료').sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
     return `<article class="kc" data-go="${esc(c._id)}" tabindex="0"><div class="kh"><b>${esc(c.name)}</b><span class="spill" style="--k:var(--s-${COLOR(c)})"><i></i>${esc(c.stage)}</span></div>
       ${c.needs || c.bizDetail ? `<div class="ksub">${esc(short(c.needs || c.bizDetail, 60))}</div>` : ''}
       <ul>${c.nextDate ? `<li class="ci cnext">${dchip(c.nextDate)}<span>${esc(short(c.nextAction, 40))}</span></li>` : `<li class="ci ${c.nextAction ? '' : 'cwarn'}"><span>${c.nextAction ? '날짜 미정 · ' + esc(short(c.nextAction, 36)) : '다음 액션 없음'}</span></li>`}
@@ -1372,7 +1453,7 @@ function homeHTML(){
   const rangeLbl = `${days[0].getMonth() + 1}/${days[0].getDate()} ~ ${days[4].getMonth() + 1}/${days[4].getDate()}`;
   return `
   ${guideOff ? '' : `<section class="guide"><b>영업 지도 쓰는 법</b>
-    <ol><li><b>고객을 만나면</b> 업체를 열고 <i>+ 기록 추가</i>, 또는 <i>영업 내역 입력함</i> 시트에 한 줄</li>
+    <ol><li><b>고객을 만나면</b> 업체를 열고 <i>+ 메모 남기기</i>, 또는 <i>영업 내역 입력함</i> 시트에 한 줄</li>
     <li><b>헤어질 때</b> 다음 할 일에 날짜를 넣으면 아래 주간 일정에 뜹니다</li>
     <li><b>매주 월요일</b> 이 화면에서 밀린 일과 재컨택 후보 정리</li></ol>
     <button type="button" class="linkbtn" id="guideOff">숨기기</button></section>`}
@@ -1390,7 +1471,7 @@ function homeHTML(){
 }
 function cardHTML(c){
   const i = stageIdx(c), pct = Math.round(i / 9 * 100), stop = STOP.includes(c.stage);
-  const my = acts.filter(a => a.companyId === c._id && a.status !== '취소');
+  const my = acts.filter(a => a.companyId === c._id && legacyContactActivity(a) && a.status !== '취소');
   const done = my.filter(a => a.status === '완료').sort((a,b) => (b.date || '').localeCompare(a.date || ''));
   const plan = [];
   if (c.nextDate) plan.push({d:c.nextDate, t:c.nextAction || '다음 일정'});
@@ -1445,19 +1526,26 @@ function wireHome(w){
 const REPORT_FIELDS = [['purpose','방문 목적'],['decisionMaker','만난 사람·결정권'],['problem','고객 문제·현황'],['proposal','우리 제안'],['reaction','고객 반응'],['blockers','걸림돌']];
 const eqLabel = e => [e.category, [e.supplier, e.model].filter(Boolean).join(' ')].filter(Boolean).join(': ');
 function actItemHTML(a){
-  const r = a.report || {};
-  const rep = REPORT_FIELDS.map(([k,l]) => [l, r[k]]).filter(([,v]) => v);
+  const manual = manualLegacyNote(a), r = a.report || {};
+  const rep = REPORT_FIELDS.map(([k,l]) => [k,l,r[k]]).filter(([,,v]) => v);
   const eq = (r.equipment||[]).filter(e => e.category || e.supplier || e.model);
-  return `<li class="${a.status==='예정'?'plan':''} ${a.status==='취소'?'cancel':''}">
-    <div class="t1"><span class="date">${esc(legacyActivityDate(a)||'날짜 미기재')}</span><span class="ty">${esc(a.type)}</span><span class="muted">${esc(a.status)}</span></div>
-    <div class="sm ${a.title === '(내용 미기재)' ? 'na2' : ''}"><b>${esc(a.title||'')}</b></div>
-    ${a.summary ? `<div class="sm">${esc(a.summary)}</div>` : ''}
-    ${a.issue ? `<div class="iss">${esc(a.issue)}</div>` : ''}
+  const textFields = ['summary','content','report.purpose','purpose'];
+  const valueOf = field => field === 'report.purpose' ? r.purpose : a[field];
+  const bodyField = textFields.find(field => typeof valueOf(field) === 'string' && valueOf(field).trim()) || textFields.find(field => typeof valueOf(field) === 'string') || 'summary';
+  const body = valueOf(bodyField) || '';
+  // The button always names its original field; editing a report never flattens it into summary.
+  const edit = (field,label='내용',directField=true) => typeof legacyEditButton === 'function' ? legacyEditButton('activities',a._id,field,label,[legacyActivityDate(a),a.title].filter(Boolean).join(' · '),directField) : '';
+  const bodyHTML = body.length > 420 || body.split('\n').length > 7 ? `<div class="legacy-text-preview">${esc(body.slice(0,260))}…</div><details class="legacy-expand"><summary><span class="when-closed">내용 전체 보기</span><span class="when-open">전체 내용 접기</span></summary><div class="sm legacy-text">${esc(body)}</div></details>` : `<div class="sm legacy-text">${esc(body)}</div>`;
+  return `<li data-legacy-activity="${esc(a._id)}" class="${!manual&&a.status==='예정'?'plan':''} ${!manual&&a.status==='취소'?'cancel':''} ${manual?'legacy-note-card':''}">
+    <div class="t1"><span class="date">${esc(legacyActivityDate(a)||'날짜 미기재')}</span><span class="ty">${esc(manual?'직접 작성 메모':a.type)}</span>${manual?'':`<span class="muted">${esc(a.status)}</span>`}</div>
+    <div class="legacy-text-heading"><div class="sm ${a.title === '(내용 미기재)' ? 'na2' : ''}"><b>${esc(a.title||'')}</b></div>${edit(bodyField,'내용',false)}</div>
+    ${bodyHTML}
+    ${a.issue ? `<div class="iss legacy-inline-editor"><span class="legacy-text">${esc(a.issue)}</span>${edit('issue','이슈')}</div>` : ''}
     ${(a.attendeesClient||a.attendeesUs) ? `<div class="na">참석: ${esc([a.attendeesClient && '고객 ' + a.attendeesClient, a.attendeesUs && '디밀리언 ' + a.attendeesUs].filter(Boolean).join(' / '))}</div>` : ''}
-    ${a.nextAction ? `<div class="na">→ ${esc(a.nextAction)}${a.nextDue ? ' (' + fmtDate(a.nextDue) + '까지)' : ''}</div>` : ''}
-    ${(rep.length || eq.length) ? `<details class="rep"><summary>출장 보고</summary><dl class="kv">${rep.map(([k,v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}${eq.length ? `<dt>언급된 장비</dt><dd>${esc(eq.map(eqLabel).join(', '))}</dd>` : ''}</dl></details>` : ''}
+    ${a.nextAction ? `<div class="na legacy-inline-editor"><span class="legacy-text">→ ${esc(a.nextAction)}${a.nextDue ? ' (' + fmtDate(a.nextDue) + '까지)' : ''}</span>${edit('nextAction','다음 액션')}</div>` : ''}
+    ${(rep.length || eq.length) ? `<details class="rep"><summary>출장 보고</summary><dl class="kv">${rep.map(([k,l,v]) => `<dt>${l}</dt><dd><div class="legacy-inline-editor"><span class="legacy-text">${esc(v)}</span>${edit('report.'+k,l)}</div></dd>`).join('')}${eq.length ? `<dt>언급된 장비</dt><dd>${esc(eq.map(eqLabel).join(', '))}</dd>` : ''}</dl></details>` : ''}
     ${a.transcript ? `<details class="rep"><summary>녹취·메모 원문 (${a.transcript.length.toLocaleString('ko-KR')}자)</summary><pre class="tr">${esc(a.transcript)}</pre></details>` : a.transcriptAsset ? `<div class="na"><a href="/_blob/${esc(a.transcriptAsset)}" target="_blank" rel="noopener">녹취 원문 파일 열기</a></div>` : ''}
-    ${cw() ? `<div class="acts"><button class="linkbtn" type="button" data-edit="${a._id}">수정</button>${a.status==='예정'?`<button class="linkbtn" type="button" data-done="${a._id}">완료로 표시</button>`:''}</div>` : ''}
+    ${cw() ? `<div class="acts">${edit('title','제목')}${manual?'':`<button class="linkbtn" type="button" data-edit="${esc(a._id)}">날짜·기타 정보 수정</button>`}${!manual&&a.status==='예정'?`<button class="linkbtn" type="button" data-done="${esc(a._id)}">완료로 표시</button>`:''}</div>` : ''}
   </li>`;
 }
 function opt(list, v){ return list.map(x => `<option ${x===v?'selected':''}>${esc(x)}</option>`).join(''); }
@@ -1513,14 +1601,23 @@ function renderDocForm(c){
 }
 
 // ---------- activity form (출장 보고) ----------
+function manualLegacyNote(a={}) { return a.source==='crm2-note'; }
+function legacyContactActivity(a={}) {
+  return !protectedConversationNote(a) && a.type!=='메모' && a.status!=='확인 메모';
+}
+function legacyHistoryTime(a={}) {
+  const date = manualLegacyNote(a) ? a.createdAt : protectedConversationNote(a) ? '' : a.date;
+  return typeof date==='string' && Number.isFinite(Date.parse(date)) ? date : '';
+}
 function protectedConversationNote(a={}) {
-  return a.datePrecision==='unknown'||a.recordKind==='undated_note'||
+  return manualLegacyNote(a)||a.datePrecision==='unknown'||a.recordKind==='undated_note'||
     a.source==='dot-conversation'&&(a.type==='메모'||a.status==='확인 메모');
 }
 function dayOnlyConversationActivity(a={}) {
   return a.source==='dot-conversation'&&a.datePrecision==='day'&&!protectedConversationNote(a);
 }
 function legacyActivityDate(a,short=false) {
+  if(manualLegacyNote(a))return '메모 작성 · '+(a.createdAt?fmtDate(a.createdAt):'작성일 미기재');
   if(dayOnlyConversationActivity(a)){
     const date=typeof a.date==='string'?a.date:'';
     const valid=/^\d{4}-\d{2}-\d{2}$/.test(date)&&!date.startsWith('0000')&&Number.isFinite(Date.parse(date+'T00:00:00Z'))&&new Date(date+'T00:00:00Z').toISOString().slice(0,10)===date;
@@ -1565,6 +1662,7 @@ function renderActForm(c){
   const w = $('actFormWrap'); if (!w) return;
   if (view.actForm !== c._id) { w.innerHTML = ''; return; }
   const existing=view.editAct&&acts.find(a=>a._id===view.editAct);
+  if(existing&&manualLegacyNote(existing)){w.innerHTML='<p class="muted">메모는 아래 기록의 내용 수정으로 고칠 수 있습니다.</p>';return;}
   if(existing&&(protectedConversationNote(existing)||dayOnlyConversationActivity(existing))){renderConversationNoteForm(c,existing);return;}
   const d = actDraftFor();
   const ta = (k, label, ph, full=true, rows=2) => `<label class="${full?'full':''}">${label}<textarea data-k="${k}" rows="${rows}" placeholder="${ph}">${esc(d[k])}</textarea></label>`;
@@ -1958,13 +2056,13 @@ function analysisHTML(){
   const bars = (entries, color) => { if (!entries.length) return '<div class="muted">아직 없습니다.</div>'; const max = Math.max(...entries.map(e => e[1]));
     return `<div class="bars">${entries.map(([k,v]) => `<div class="barrow"><span>${esc(k)}</span><span class="bt"><i style="width:${(v/max*100).toFixed(1)}%;background:${color}"></i></span><span class="bv">${v}</span></div>`).join('')}</div>`; };
   const stopCos = cust.filter(c => STOP.includes(c.stage)), winCos = cust.filter(c => WIN.includes(c.stage));
-  const met = co => acts.some(a => a.companyId === co._id && a.status === '완료' && ['첫 미팅','현장 방문','제안·발표','계약'].includes(a.type)) || (STAGES.indexOf(co.stage) >= 2 && !STOP.includes(co.stage));
+  const met = co => acts.some(a => a.companyId === co._id && legacyContactActivity(a) && a.status === '완료' && ['첫 미팅','현장 방문','제안·발표','계약'].includes(a.type)) || (STAGES.indexOf(co.stage) >= 2 && !STOP.includes(co.stage));
   const perf = keyFn => { const m = new Map(); for (const c of cust) { const k = keyFn(c) || '미입력'; const r = m.get(k) || {n:0, met:0, win:0, stop:0}; r.n++; if (met(c)) r.met++; if (WIN.includes(c.stage)) r.win++; if (STOP.includes(c.stage)) r.stop++; m.set(k, r); }
     return `<div class="tbl"><table style="min-width:520px"><thead><tr><th></th><th>고객사</th><th>미팅까지 간 곳</th><th>선정·계약</th><th>보류·드랍</th><th>결론 난 건 중 성사율</th></tr></thead><tbody>${[...m.entries()].sort((a,b) => b[1].n - a[1].n).map(([k,r]) => `<tr><td><b>${esc(k)}</b></td><td class="n">${r.n}</td><td class="n">${r.met} (${Math.round(r.met/r.n*100)}%)</td><td class="n">${r.win}</td><td class="n">${r.stop}</td><td class="n">${r.win + r.stop ? Math.round(r.win/(r.win+r.stop)*100) + '%' : '–'}</td></tr>`).join('')}</tbody></table></div>`; };
   const stageDist = STAGES.map(s => [s, cust.filter(c => c.stage === s).length]).filter(([,v]) => v);
   const since = Date.now() - 30*864e5;
   const custIds = new Set(cust.map(c => c._id));
-  const recent = tally(acts.filter(a => custIds.has(a.companyId)).filter(a => a.status === '완료' && a.date && new Date(a.date).getTime() >= since), a => a.type);
+  const recent = tally(acts.filter(a => custIds.has(a.companyId)).filter(a => legacyContactActivity(a) && a.status === '완료' && a.date && new Date(a.date).getTime() >= since), a => a.type);
   return `<h3>왜 됐고, 왜 안 됐나</h3><div class="muted" style="margin-bottom:10px">단계를 선정·계약·보류·드랍으로 바꿀 때 고른 사유가 모입니다.</div>
     <div class="two"><div><h4>성사 요인 (${winCos.length}곳)</h4>${bars(tally(winCos, c => c.outcomeReason), 'var(--s-win)')}</div>
     <div><h4>보류·드랍 사유 (${stopCos.length}곳)</h4>${bars(tally(stopCos, c => c.outcomeReason), 'var(--s-stop)')}</div></div>
@@ -1986,8 +2084,8 @@ const rpShort = iso => { const d = new Date(iso); return isNaN(d) ? '' : `${d.ge
 const rpActs = id => acts.filter(a => a.companyId === id && a.status !== '취소').sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
 function rpReached(c, as){
   if (!STOP.includes(c.stage)) return RP_GI[GROUP(c.stage)] ?? 0;
-  if (as.some(a => a.status === '완료' && ['제안·발표','계약'].includes(a.type))) return 2;
-  if (as.some(a => a.status === '완료' && ['첫 미팅','현장 방문'].includes(a.type))) return 1;
+  if (as.some(a => legacyContactActivity(a) && a.status === '완료' && ['제안·발표','계약'].includes(a.type))) return 2;
+  if (as.some(a => legacyContactActivity(a) && a.status === '완료' && ['첫 미팅','현장 방문'].includes(a.type))) return 1;
   return 0;
 }
 function reportData(){
@@ -2007,8 +2105,8 @@ function reportHTML(){
   const cnt = g => cust.filter(c => GROUP(c.stage) === g).length;
   const live = cust.filter(c => !STOP.includes(c.stage) && !WIN.includes(c.stage)).length;
   const since = Date.now() - 14 * 864e5;
-  const recent = acts.filter(a => a.status === '완료' && a.date && new Date(a.date).getTime() >= since).length;
-  const planned = acts.filter(a => a.status === '예정' && a.date && new Date(a.date) >= now).length;
+  const recent = acts.filter(a => legacyContactActivity(a) && a.status === '완료' && a.date && new Date(a.date).getTime() >= since).length;
+  const planned = acts.filter(a => legacyContactActivity(a) && a.status === '예정' && a.date && new Date(a.date) >= now).length;
   const kpis = [[live, '진행 중'], [cnt('win'), '선정·계약'], [cnt('stop'), '보류·드랍'], [recent, '최근 2주 미팅·접점'], [planned, '잡힌 일정']];
   const board = ['lead','meet','prop','win','stop'].map(g => { const cs = data.filter(x => GROUP(x.c.stage) === g);
     return `<div class="rp-col" style="--c:var(--s-${g})"><h5>${esc(GROUP_LABEL[g])}<b>${cs.length}</b></h5>${cs.length ? cs.map(x => `<button type="button" data-rpjump="${esc(x.c._id)}">${esc(x.c.name)}</button>`).join('') : '<span class="none">없음</span>'}</div>`; }).join('');
@@ -2423,7 +2521,7 @@ const CAL_KIND = {done:['완료','var(--s-meet)'], plan:['예정','var(--accent)
 const calReg = {};
 function coEvents(c){
   const ev = [];
-  for (const a of acts) if (a.companyId === c._id && a.date && a.status !== '취소') ev.push({d:a.date, k:a.status === '예정' ? 'plan' : 'done', t:`${a.type} ${a.title || ''}`.trim(), co:c._id});
+  for (const a of acts) if (a.companyId === c._id && legacyContactActivity(a) && a.date && a.status !== '취소') ev.push({d:a.date, k:a.status === '예정' ? 'plan' : 'done', t:`${a.type} ${a.title || ''}`.trim(), co:c._id});
   if (c.nextDate && !STOP.includes(c.stage)) ev.push({d:c.nextDate, k:'next', t:c.nextAction || '다음 일정', co:c._id});
   if (c.contract?.date) ev.push({d:c.contract.date, k:'contract', t:`계약 ${c.contract.amount ? eok(c.contract.amount) : ''}`.trim(), co:c._id});
   for (const h of c.ownerHistory || []) ev.push({d:h.at, k:'hand', t:`담당 → ${h.toOwner || ''}`, co:c._id});
@@ -2487,7 +2585,7 @@ const tgt = (T, p) => { const o = T.periods?.[p.key] || {}; return {amount: o.am
 const MEET_T = ['첫 미팅','현장 방문','내방','화상'], CALL_T = ['통화','메일','문자'], PROP_T = ['제안·발표'];
 function yearActive(Y){
   const y = String(Y);
-  return customers().filter(c => !STOP.includes(c.stage) && (String(c.applyTiming || '').startsWith(y) || String(c.nextDate || '').startsWith(y) || String(c.contract?.date || '').startsWith(y) || acts.some(a => a.companyId === c._id && String(a.date || '').startsWith(y))));
+  return customers().filter(c => !STOP.includes(c.stage) && (String(c.applyTiming || '').startsWith(y) || String(c.nextDate || '').startsWith(y) || String(c.contract?.date || '').startsWith(y) || acts.some(a => a.companyId === c._id && legacyContactActivity(a) && String(a.date || '').startsWith(y))));
 }
 function chartSVG(months, vals, targetsM, color, fmt, emptyMsg){
   const W = 640, H = 200, L = 46, R = 8, T = 14, B = 26, iw = W - L - R, ih = H - T - B;
@@ -2512,7 +2610,7 @@ function dashHTML(){
   const P = periodsOf(Y, g), now = new Date(), months = periodsOf(Y, 'month');
   const sumIn = p => revIn(p, basis), cntIn = p => revCnt(p);
   const contracts = revDeals().filter(d => inP(d.start, yearP));
-  const custActs = acts.filter(a => a.status === '완료' && a.date && cust.some(c => c._id === a.companyId));
+  const custActs = acts.filter(a => legacyContactActivity(a) && a.status === '완료' && a.date && cust.some(c => c._id === a.companyId));
   const yA = sumIn(yearP), yN = contracts.length, yF = fundIn(yearP), carry = revDeals().filter(d => toDate(d.start) < yearP.start && toDate(d.end) >= yearP.start);
   const yT = Number(T.amount) || 0, yTC = Number(T.count) || 0, pct = yT ? yA / yT * 100 : 0;
   const active = yearActive(Y), pipe = active.filter(c => !WIN.includes(c.stage)).reduce((s, c) => s + (Number(c.budget) || 0), 0);
@@ -2978,8 +3076,8 @@ fetch('map.json').then(r => r.json()).then(m => { MAP = m; renderAll(); }).catch
   if (user) { try { myId = await user.id(); } catch {} }
   if (!db) { loaded.c = true; $('list').innerHTML = '<div class="empty">저장소에 연결할 수 없어 고객사 데이터를 표시하지 못했습니다. 로그인 상태를 확인해 주세요.</div>'; $('stats').innerHTML = ''; canWrite = false; renderAll(); return; }
   if (user) { try { const w = await user.can('data.write'); canWrite = w === null ? null : !!w; } catch { canWrite = null; } } else canWrite = null;
-  db.collection('companies').onSnapshot(s => { companies = s.docs.map(d => ({...d.data(), _id:d.id})); loaded.c = true; renderAll(); }, () => { loaded.c = true; renderAll(); });
-  db.collection('activities').onSnapshot(s => { acts = s.docs.map(d => ({...d.data(), _id:d.id, _raw:d.data()})); loaded.a = true; renderAll(); }, () => {});
+  db.collection('companies').onSnapshot(s => { companies = legacySnapshotRows('companies',s); loaded.c = true; renderAll(); }, () => { loaded.c = true; renderAll(); });
+  db.collection('activities').onSnapshot(s => { acts = legacySnapshotRows('activities',s); loaded.a = true; renderAll(); }, () => {});
   db.doc('programs/graph').onSnapshot(d => { pgRemote(d.exists ? d.data() : null); }, () => {});
   db.collection('projects').onSnapshot(s => { projects = s.docs.map(d => ({...d.data(), _id:d.id, _raw:d.data()})); renderAll(); }, () => {});
   db.collection('targets').onSnapshot(s => { const m = {}; s.docs.forEach(d => { m[d.id] = d.data(); }); targets = m; if (tab === 'dash') renderWide(); }, () => {});

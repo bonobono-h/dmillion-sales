@@ -1,0 +1,55 @@
+/* Legacy-only reading and text editing; existing full workflows remain available. */
+#list .row{align-items:start;gap:10px;padding:13px 12px}
+#list .row .nm{font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+#list .row .sub{white-space:normal;overflow:visible;text-overflow:clip;line-height:1.65;margin-top:4px}
+#list .legacy-row-next{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-size:12px;line-height:1.65;margin-top:5px;color:var(--ink)}
+#list .row .when{font-size:10.5px;padding-top:3px}
+#detailCard .legacy-text-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:5px}
+#detailCard .legacy-text-heading h4{margin:0}
+#detailCard .legacy-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8}
+#detailCard .legacy-text-edit{display:inline-flex;align-items:center;min-height:30px;border:1px solid var(--line);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:600;color:var(--accent);background:var(--surface);cursor:pointer;white-space:nowrap}
+#detailCard .legacy-text-edit:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#detailCard .legacy-next-date{font-size:12px;color:var(--ink2);margin-top:6px}
+#detailCard .tl{border-left:0;padding:0}
+#detailCard .tl > li:not(.todayline){margin:0 0 12px;padding:15px 16px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
+#detailCard .tl > li::before{display:none}
+#detailCard .tl .t1{margin-bottom:7px}
+#detailCard .tl .sm{font-size:14px;line-height:1.8;margin-top:8px}
+#detailCard .tl .acts{margin-top:10px;gap:14px;align-items:center;flex-wrap:wrap}
+#detailCard .tl .na{line-height:1.8;margin-top:8px}
+#detailCard .legacy-expand{margin-top:8px}
+#detailCard .legacy-expand > summary{cursor:pointer;color:var(--accent);font-size:12px;font-weight:600;padding:4px 0}
+#detailCard .legacy-expand[open] > summary .when-closed,#detailCard .legacy-expand:not([open]) > summary .when-open{display:none}
+#detailCard .legacy-text-preview{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;margin:8px 0 0}
+#detailCard .legacy-inline-editor{display:flex;align-items:start;gap:10px;justify-content:space-between}
+#detailCard .legacy-inline-editor > .legacy-text{flex:1;min-width:0}
+#detailCard .legacy-history-help{margin:0 0 12px;font-size:12px;color:var(--ink2)}
+#detailCard .legacy-company-notes{margin:14px 0;padding:10px 12px;border:1px solid var(--line);border-radius:8px}
+#detailCard .legacy-company-notes > summary{cursor:pointer;font-weight:600}
+#detailCard .legacy-company-notes .sec:first-of-type{margin-top:10px}
+.legacy-edit-layer{position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;background:#0008;padding:max(16px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));overflow:auto}
+.legacy-edit-panel{width:min(760px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:22px;box-shadow:0 18px 70px #0004}
+.legacy-edit-panel h2{font-size:19px;margin:0 0 6px}
+.legacy-edit-panel p{margin:7px 0 14px;overflow-wrap:anywhere}
+.legacy-edit-context{font-size:13px;color:var(--ink2)}
+.legacy-edit-panel label{display:block;font-size:13px;font-weight:600;margin-bottom:7px}
+.legacy-edit-panel textarea{width:100%;min-height:230px;max-height:55vh;font:inherit;font-size:16px;line-height:1.8;tab-size:4;white-space:pre-wrap}
+.legacy-edit-controls{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.legacy-edit-controls button{min-height:40px;min-width:76px}
+.legacy-edit-error{color:var(--bad);background:var(--bad-soft);padding:10px;border-radius:6px}
+.legacy-edit-history{margin-top:12px}
+.legacy-edit-history summary{cursor:pointer;color:var(--accent);font-weight:600}
+.legacy-edit-history pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;line-height:1.7;background:var(--sunken);padding:10px;border-radius:6px;max-height:240px;overflow:auto}
+@media(max-width:600px){#detailCard .tl > li:not(.todayline){padding:12px}.legacy-edit-layer{padding:10px}.legacy-edit-panel{padding:16px;max-height:calc(100dvh - 20px)}.legacy-inline-editor{flex-wrap:wrap}.legacy-inline-editor > .legacy-text{flex-basis:100%}}
+
+@media(max-width:600px){#detailCard .legacy-text-edit,.legacy-edit-controls button{min-height:44px;padding:8px 12px}.legacy-edit-panel textarea{font-size:16px}}
+
+/* Freeform writing is the default; structured reports are intentionally secondary. */
+#detailCard .sec > h4:has(#addAct){display:flex;align-items:center;justify-content:space-between;gap:12px}
+#detailCard #addAct{min-height:40px;padding:8px 12px;white-space:nowrap}
+#detailCard .legacy-structured-choice{margin:0 0 14px;color:var(--ink2);font-size:12px}
+#detailCard .legacy-structured-choice > summary{cursor:pointer;padding:6px 0}
+#detailCard .legacy-structured-choice p{margin:5px 0 9px}
+#detailCard .legacy-note-card .date{font-weight:600}
+.legacy-note-panel textarea{min-height:260px}
+#legacyNoteHint{font-size:12px;line-height:1.6;margin:10px 0}
