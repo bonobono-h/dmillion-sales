@@ -3,13 +3,17 @@ import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,p
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
   buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261104-search-1';
 import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261104-search-1';
-import {createIntakeUI} from './crm2-intake.js?v=20261030-intake-body-2';
+import {createIntakeUI} from './crm2-intake.js?v=20261110-board-1';
 import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261104-search-1';
 import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261104-records-1';
 import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
-import {createSalesAgentUI} from './crm2-agent.js?v=20261104-records-1';
+import {createSalesAgentUI} from './crm2-agent.js?v=20261110-board-1';
 import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
 import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-2';
+import {accountLabel,activityIdentity} from './crm2-identity.mjs?v=20261110-identity-1';
+import {buildStageBoard} from './crm2-board.mjs?v=20261110-board-1';
+import {buildFocusRows} from './crm2-focus.mjs?v=20261110-board-1';
+import {createLiveUpdates} from './crm2-live.mjs?v=20261110-board-1';
 import {activityReviewHTML} from './crm2-review.mjs?v=20261105-workflow-2';
 import {bindComposedSearch} from './crm2-search.mjs?v=20261104-search-1';
 
@@ -84,7 +88,7 @@ const state={
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
   calendar:{events:[],sync:null,error:'',period:'week',attendee:''},
-  recent:{period:'week',type:'all',limit:8},docUpdatedAt:{},
+  recent:{period:'week',type:'all',limit:8},docUpdatedAt:{},docUpdatedBy:{},userProfiles:{},userApi:null,focus:{q:'',filter:'all',layout:'board'},
   filters:{q:'',kind:'customer',grade:'',market:'',group:'',stage:'',sort:'priority',hasTask:false},
   oppFilter:'all',activityFilter:'all',meetingScope:'meetings',importFilter:'all',
   importRows:[],importPreview:[],importFileName:'',importSessionApplied:false,
@@ -96,13 +100,14 @@ const state={
 const intake=createIntakeUI({state,render,toast,showModal,reload:loadLive});
 const agent=createSalesAgentUI({state,render,toast,reload:loadLive,newCompany:companyModal,openCompany:selectCompany,progress:{fields:options=>progressFields(state,options),sync:(form,suggest)=>syncProgressFields(state,form,suggest),read:selectedProgress,save:(id,selection,meta)=>saveProgress(state,id,selection,meta),label:progressLabel}});
 const DEFAULT_OWNERS=['김웅섭','윤홍렬','한인탁','박진우'];
-state.salesOwners=[];state.detailOpen=false;state.accountView='list';state.returnScreen='accounts';state.accountScroll=0;state.accountPageScroll=0;
-if(!new URLSearchParams(location.search).has('view')&&matchMedia('(max-width:780px)').matches)state.accountView='home';
+state.salesOwners=[];state.detailOpen=false;state.accountView=new URLSearchParams(location.search).get('view')==='accounts'?'list':'focus';state.returnScreen='accounts';state.accountScroll=0;state.accountPageScroll=0;
+// The same focused workspace opens on desktop and phone.
 if(['coverage','timeline','home'].includes(state.screen)){state.accountView=state.screen;state.screen='accounts';}
-function ownerChoices(){return [...new Set([...DEFAULT_OWNERS,...state.salesOwners.map(x=>x.name),...state.companies.map(x=>x.owner)].filter(Boolean))];}
+function ownerChoices(){return [...new Set([...(state.demo?[]:DEFAULT_OWNERS),...state.salesOwners.map(x=>x.name),...state.companies.map(x=>x.owner)].filter(Boolean))];}
 function ownerFields(value=''){return `<div class="form-row"><label>디밀리언 영업 담당자<select name="salesOwner">${options(ownerChoices(),value,'담당 미지정')}</select></label><label>새 담당자 추가<input name="newOwner" maxlength="40" placeholder="새 이름 입력 시 선택한 담당자 대신 지정"></label></div>`;}
 async function chosenOwner(fd){const extra=safeText(fd.get('newOwner'));if(extra.length>40)throw new Error('담당자 이름은 40자 이하로 입력해 주세요.');const name=extra||safeText(fd.get('salesOwner'));if(extra&&!ownerChoices().includes(extra)){const id=uid();await saveDoc('crm2Owners',id,{name:extra,createdAt:new Date().toISOString()});state.salesOwners.push({_id:id,name:extra});}return name;}
-function accountTabs(){return `<div class="filter-chips account-view-tabs" aria-label="고객 관리 보기">${[['home','오늘 할 일'],['list','고객 목록'],['timeline','진행 타임라인'],['coverage','관리 현황']].map(([key,label])=>`<button data-action="account-view" data-view="${key}" class="${state.accountView===key?'active':''}">${label}</button>`).join('')}</div>`;}
+function accountTabs(){return `<nav class="crm-workspace-switch" aria-label="고객 보기">${[['focus','지금 챙길 업체'],['list','전체 업체']].map(([view,label])=>`<button type="button" data-action="account-view" data-view="${view}" class="crm-view-button ${state.accountView===view?'active':''}" aria-pressed="${state.accountView===view}">${label}</button>`).join('')}<details class="crm-more-menu"><summary>추가 보기</summary><div>${[['home','전체 후속업무'],['timeline','연도별 진행 타임라인'],['coverage','고객 관리 점검']].map(([view,label])=>`<button type="button" data-action="account-view" data-view="${view}">${label}</button>`).join('')}</div></details></nav>`;}
+
 const navNames={agent:'AI 영업 Agent',coverage:'고객 관리 현황',timeline:'진행 타임라인',intake:'자료 업데이트',accounts:'고객 관리',home:'오늘의 영업',opportunities:'영업 기회',activities:'미팅 이력',manager:'관리자 분석',performance:'영업 실적',import:'엑셀 비교·가져오기',admin:'회원 관리'};
 function workspaceGroup(screen=state.screen){return screen==='admin'?'admin':['agent','intake','import'].includes(screen)?'agent':['performance','manager'].includes(screen)?'performance':'accounts';}
 function workspaceTabs(){
@@ -122,30 +127,63 @@ function categoryChoices() {
 }
 
 async function loadDemo(){
-  const {demoData}=await import('./crm2-demo.mjs?v=20261103-perf-1');
+  const {demoData,demoNotice}=await import('./crm2-demo.mjs?v=20261110-identity-1');
+  state.demoNotice=demoNotice;state.userApi=null;state.userProfiles={'demo-user':{name:'[예시] 기록자 가'}};state.docUpdatedBy={};
   state.companies=structuredClone(demoData.companies);
+  // Explicitly synthetic stage transitions show how residence age works.
+  state.companies.forEach((company,index)=>{company.stageHistory=[{from:'리드',to:company.stage,at:seoulDay(new Date(Date.now()-(index+2)*86400000)),note:'[예시] 가상 단계 변경'}];});
   state.profiles=structuredClone(demoData.profiles);
   state.activities=structuredClone(demoData.activities);
-  ['demo-c1','demo-c2','demo-c3','demo-c5'].forEach((companyId,index)=>state.activities.push({_id:'demo-recent-'+index,companyId,type:'메일',status:'완료',date:seoulDay(),createdAt:new Date(Date.now()-index*60000).toISOString(),title:'지원사업 검토 안내 메일 발송 (데모)',summary:'고객사에 검토 내용을 안내하고 필요한 자료와 일정 회신을 요청했습니다. 가상 기록입니다.',nextAction:'검토 의견·가능 일정 회신 확인'}));
+  ['demo-c1','demo-c2','demo-c3','demo-c5'].forEach((companyId,index)=>state.activities.push({_id:'demo-recent-'+index,companyId,type:'메일',status:'완료',date:seoulDay(),createdAt:new Date(Date.now()-index*60000).toISOString(),createdBy:'demo-user',title:'[예시] 지원사업 검토 안내 메일 발송',summary:'[예시] 고객사에 검토 내용을 안내하고 필요한 자료와 일정 회신을 요청했습니다. 가상 기록입니다.',nextAction:'[예시] 검토 의견·가능 일정 회신 확인'}));
   state.projects=structuredClone(demoData.projects);
   state.opportunities=structuredClone(demoData.opportunities);
   state.tasks=structuredClone(demoData.tasks);
   state.goals=structuredClone(demoData.goals||[]);
-  state.calendar.events=[{sourceId:'1',title:'가상 고객사 기술 미팅',startDate:seoulDay(),endDate:seoulDay(),startTime:'14:00',endTime:'15:00',allDay:false,attendees:['데모 담당자']},{sourceId:'2',title:'가상 팀 공동 일정',startDate:seoulDay(),endDate:seoulDay(),allDay:true,attendees:[]}];
+  state.calendar.events=[{sourceId:'1',title:'[예시] 고객사 기술 미팅',startDate:seoulDay(),endDate:seoulDay(),startTime:'14:00',endTime:'15:00',allDay:false,attendees:['[예시] 담당자 가']},{sourceId:'2',title:'[예시] 팀 공동 일정',startDate:seoulDay(),endDate:seoulDay(),allDay:true,attendees:[]}];
   state.calendar.sync=null;state.calendar.error='';
   state.isAdmin=true;state.canWrite=true;state.userId='demo-user';state.role='admin';state.connected=false;state.contacts=structuredClone(demoData.contacts||{});state.categories=[];
   $('adminNav').hidden=false;
   $('modePill').textContent='데모 · 가상 업체';$('modePill').classList.add('demo');
 }
+function rememberDoc(collection,doc){
+  const key=collection+'/'+doc.id;
+  if(doc.updatedAt)state.docUpdatedAt[key]=doc.updatedAt;
+  // Server metadata is separate from editable document JSON.
+  state.docUpdatedBy[key]=doc.updatedBy||null;
+}
+const actorLookups=new Set();
+async function loadActorNames(){
+  if(state.demo||typeof state.userApi?.profiles!=='function')return;
+  const ids=[...new Set([state.userId,...state.activities.map(a=>a.createdBy),...Object.values(state.docUpdatedBy)])]
+    .filter(id=>typeof id==='string'&&id&&!state.userProfiles[id]&&!actorLookups.has(id));
+  for(let start=0;start<ids.length;start+=100){
+    const batch=ids.slice(start,start+100),api=state.userApi,viewer=state.userId;
+    batch.forEach(id=>actorLookups.add(id));
+    try{
+      const profiles=await api.profiles(batch);
+      if(api!==state.userApi||viewer!==state.userId||state.demo)return;
+      for(const id of batch){const name=profiles?.[id]?.name;if(typeof name==='string'&&name.trim())state.userProfiles[id]={name:name.trim()};}
+      // Only replace name text. Never rerender a form or disturb focus/scroll.
+      $main.querySelectorAll('[data-person-id]').forEach(node=>{node.textContent=accountLabel(node.dataset.personId,state.userProfiles);});
+    }catch{ /* Names remain explicitly unavailable; do not infer identities. */ }
+    finally{batch.forEach(id=>actorLookups.delete(id));}
+  }
+}
+function identityHTML(activity,compact=false){
+  const record=activityIdentity(activity,{profiles:state.userProfiles,lastSavedBy:state.docUpdatedBy['activities/'+cid(activity)]});
+  const person=(id,label)=>`<span ${id?`data-person-id="${attr(id)}"`:''}>${esc(label)}</span>`;
+  return `<div class="crm-activity-identity ${compact?'is-compact':''}" aria-label="활동 기록 출처"><span>기록 작성 · ${person(record.authorId,record.author)}</span><span title="마지막으로 저장한 로그인 계정입니다. 최초 작성자나 실제 연락 수행자를 뜻하지 않습니다.">마지막 저장 · ${person(record.editorId,record.editor)}</span>${!compact?`<span>디밀리언 참석 · ${esc(record.participants||'기록 없음')}</span>`:''}</div>`;
+}
 async function getDocs(db,path) {
   const snap=await db.collection(path).get();
-  return snap.docs.map(d=>{if(d.updatedAt)state.docUpdatedAt[`${path}/${d.id}`]=d.updatedAt;return {_id:d.id,...(d.data()||{})};});
+  return snap.docs.map(d=>{rememberDoc(path,d);return {...(d.data()||{}),_id:d.id};});
 }
 async function loadLive(){
   if(!window.claude){throw new Error('기존 영업관리의 로그인 연결을 찾지 못했습니다. 파일을 기존 저장소 루트에 넣었는지 확인하세요.');}
   const [db,user]=await Promise.all([window.claude.use('db'),window.claude.use('user')]);
-  state.db=db;
+  state.db=db;state.userApi=user;state.userProfiles={};state.docUpdatedBy={};actorLookups.clear();
   state.canWrite=await user.can('data.write');state.isAdmin=await user.isOwner();state.userId=await user.id();
+  const me=window.dmSync?.whoami?.();if(me?.id===state.userId&&me?.name)state.userProfiles[state.userId]={name:me.name};
   state.role=window.dmSync?.whoami()?.role || (state.isAdmin?'admin':state.canWrite?'sales':'view');
   $('adminNav').hidden=!state.isAdmin;
   if(state.screen==='admin'&&!state.isAdmin)state.screen='accounts';
@@ -165,7 +203,57 @@ async function loadLive(){
   state.contacts=Object.fromEntries(protectedContacts.map(x=>[x._id,x]));
   $('modePill').textContent=state.isAdmin?'운영 데이터 · 관리자':state.canWrite?'운영 데이터 · 영업담당':'운영 데이터 · 보기전용';
   $('modePill').classList.remove('demo');
+  await loadActorNames();
 }
+let liveUpdates=null;
+function canApplyLiveUpdates(){
+  return !document.hidden&&!state.loading&&!state.importApplying&&!state.importSessionApplied
+    &&$('modalLayer').classList.contains('hidden')
+    &&!['agent','intake','import','admin'].includes(state.screen)
+    &&!($main.contains(document.activeElement)&&document.activeElement.matches('input,textarea,select,[contenteditable="true"]'));
+}
+function startLiveUpdates(){
+  liveUpdates?.stop();liveUpdates=null;
+  const label=$('liveStatus');
+  if(state.demo||!state.db){label.hidden=true;return;}
+  label.hidden=false;
+  const arrays={companies:'companies',activities:'activities',projects:'projects',opportunities:'opportunities',tasks:'tasks',crm2Categories:'categories',crm2Owners:'salesOwners',targets:'goals'};
+  const collections=[...Object.keys(arrays),'crm2Profiles','calendar'];
+  if(state.canWrite)collections.push('data/contacts/items');
+  liveUpdates=createLiveUpdates({db:state.db,collections,canApply:canApplyLiveUpdates,
+    status:kind=>{
+      const labels={watching:'자동 갱신 켜짐',updated:'새 기록 반영됨',waiting:'자동 갱신 대기',error:'갱신 확인 필요',unavailable:'수동 새로고침'};
+      label.textContent=labels[kind]||labels.watching;label.dataset.state=kind;
+      label.title=kind==='waiting'?'입력 중인 내용과 임시 자료를 보호하기 위해 화면 갱신을 기다립니다.':kind==='error'?'연결 상태를 확인하고 페이지를 다시 열어 주세요.':'로그인한 계정이 볼 수 있는 CRM 변경을 자동으로 반영합니다. 대화 자체를 저장하는 기능과는 별개입니다.';
+    },
+    apply:snapshots=>{
+      const focused=document.activeElement,focusId=focused?.id,focusData=focused?.dataset.action?JSON.stringify({...focused.dataset}):null;
+      const pageScroll=window.scrollY;
+      const scrollSelector='.table-scroll,.timeline-list-scroll,.crm-account-list-panel,.detail-scroll,.crm-kanban';
+      const scrollPositions=[...$main.querySelectorAll(scrollSelector)].map(node=>({className:node.className,top:node.scrollTop,left:node.scrollLeft}));
+      for(const [collection,snapshot] of snapshots){
+        for(const map of [state.docUpdatedAt,state.docUpdatedBy])for(const path of Object.keys(map))if(path.startsWith(collection+'/'))delete map[path];
+        const rows=snapshot.docs.map(doc=>{rememberDoc(collection,doc);return {...(doc.data()||{}),_id:doc.id};});
+        if(collection==='crm2Profiles')state.profiles=Object.fromEntries(rows.map(row=>[row._id,row]));
+        else if(collection==='data/contacts/items')state.contacts=Object.fromEntries(rows.map(row=>[row._id,row]));
+        else if(collection==='calendar')state.calendar.events=rows.filter(row=>row.source==='workcenter');
+        else state[arrays[collection]]=collection==='targets'?rows.filter(row=>row.kind==='salesGoal'):rows;
+      }
+      for(const company of state.companies){const id=cid(company);state.profiles[id]={accountGrade:company.grade||'',...state.profiles[id]};}
+      if(!cc(state.selectedId)){state.selectedId=state.companies[0]?cid(state.companies[0]):null;state.detailOpen=false;}
+      render();
+      [...$main.querySelectorAll(scrollSelector)].forEach((node,index)=>{const previous=scrollPositions[index];if(previous?.className===node.className){node.scrollTop=previous.top;node.scrollLeft=previous.left;}});
+      const focusTarget=focusId?$(focusId):focusData?[...$main.querySelectorAll('[data-action]')].find(node=>JSON.stringify({...node.dataset})===focusData):null;
+      if(focusTarget&&focused!==document.body)focusTarget.focus({preventScroll:true});
+      window.scrollTo({top:pageScroll});
+      void loadActorNames();
+    }
+  });
+}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)liveUpdates?.flush();});
+document.addEventListener('focusout',()=>setTimeout(()=>liveUpdates?.flush(),0));
+window.addEventListener('pagehide',()=>{liveUpdates?.stop();liveUpdates=null;});
+window.addEventListener('pageshow',event=>{if(event.persisted)startLiveUpdates();});
 async function refresh(){
   if(state.loading)return;
   state.loading=true;$('refreshBtn').disabled=true;
@@ -173,7 +261,7 @@ async function refresh(){
     if(state.demo)await loadDemo();else await loadLive();
     if(state.screen==='intake')await intake.load();
     if(!cc(state.selectedId))state.selectedId=state.companies[0]?cid(state.companies[0]):null;
-    render();toast(`${state.companies.length}개 업체를 불러왔습니다.`);
+    render();startLiveUpdates();toast(`${state.companies.length}개 업체를 불러왔습니다.`);
   }catch(e){console.error(e);toast('불러오기 실패: '+e.message,true);}finally{state.loading=false;$('refreshBtn').disabled=false;}
 }
 async function boot(){
@@ -182,7 +270,7 @@ async function boot(){
     if(state.screen==='intake')await intake.load();
     state.selectedId=state.companies[0]?cid(state.companies[0]):null;
     $('loadingScreen').classList.add('hidden');
-    render();
+    render();startLiveUpdates();
   }catch(e){
     console.error(e);$('loadingText').textContent='연결 오류: '+e.message;
     $('loadingDemo').classList.remove('hidden');$('loadingDemo').onclick=()=>location.href='crm2.html?demo=1';
@@ -197,6 +285,7 @@ function renderAdmin(){if(!state.isAdmin)return empty('관리자만 사용할 �
 function render(){
   // Preserve the scroll position of both independently scrollable panes whenever
   // the account page must be re-rendered (e.g. a task was completed or edited).
+  const boardScroll=$main.querySelector('.crm-kanban')?.scrollLeft;
   const accountList=state.screen==='accounts'?$main.querySelector('.account-layout .table-scroll'):null;
   const detailBody=state.screen==='accounts'?$main.querySelector('.account-layout .detail-scroll'):null;
   const timelineList=state.screen==='timeline'||(state.screen==='accounts'&&state.accountView==='timeline')?$main.querySelector('.timeline-list-scroll'):null;
@@ -204,10 +293,12 @@ function render(){
   const detailScroll=detailBody?detailBody.scrollTop:null;
   const listPanel=$main.querySelector('.crm-account-list-panel'),listPanelScroll=listPanel?.scrollTop;
   const timelineScroll=timelineList?timelineList.scrollTop:null;
+  document.querySelectorAll('.sidebar [data-action="account-view"]').forEach(node=>node.classList.toggle('active',state.screen==='accounts'&&node.dataset.view===state.accountView));
   document.querySelectorAll('[data-nav]').forEach(x=>x.classList.toggle('active',x.dataset.nav===workspaceGroup()));
   $('crumb').textContent={accounts:'고객 관리',agent:'영업 기록 입력',performance:'영업 실적',admin:'회원 관리'}[workspaceGroup()];
   const body={performance:renderPerformance,agent:agent.render,intake:intake.render,coverage:renderCoverage,timeline:renderTimeline,accounts:renderAccounts,home:renderHome,opportunities:renderOpportunities,activities:renderActivities,manager:renderManager,import:renderImport,admin:renderAdmin}[state.screen];
-  $main.innerHTML=workspaceTabs()+(body?body():renderAccounts());
+  $main.innerHTML=(state.demo?`<aside class="crm-demo-notice" role="note">${esc(state.demoNotice||'[예시 화면] 실제 고객 데이터가 아닙니다.')}</aside>`:'')+workspaceTabs()+(body?body():renderAccounts());
+  if(boardScroll!==undefined){const board=$main.querySelector('.crm-kanban');if(board)board.scrollLeft=boardScroll;}
   if(listScroll){
     const next=$main.querySelector('.account-layout .table-scroll');
     if(next){next.scrollTop=listScroll.top;next.scrollLeft=listScroll.left;}
@@ -245,7 +336,7 @@ function detailPaneContent(){
 }
 function selectCompany(id,updateInPlace=true){
   if(!cc(id))return;
-  if(!state.detailOpen){state.returnScreen=state.screen;state.accountScroll=$main.querySelector('.timeline-list-scroll,.table-scroll')?.scrollTop||0;state.accountPageScroll=window.scrollY;}
+  if(!state.detailOpen){state.accountHorizontalScroll=$main.querySelector('.crm-kanban')?.scrollLeft||0;state.returnScreen=state.screen;state.accountScroll=$main.querySelector('.timeline-list-scroll,.table-scroll')?.scrollTop||0;state.accountPageScroll=window.scrollY;}
   state.detailOpen=true;
   state.selectedId=id;
   state.companyTab=state.accountView==='timeline'?'progress':'overview';
@@ -258,8 +349,9 @@ function backToAccounts(){
   state.detailOpen=false;state.screen=state.returnScreen||'accounts';
   if(state.screen!=='accounts'||state.accountView!=='list'||!updateCompanyDetailOnly())render();
   const list=$main.querySelector('.timeline-list-scroll,.table-scroll');if(list&&(!matchMedia('(min-width:1081px)').matches||state.accountView!=='list'))list.scrollTop=state.accountScroll;
+  const board=$main.querySelector('.crm-kanban');if(board)board.scrollLeft=state.accountHorizontalScroll||0;
   window.scrollTo({top:state.accountPageScroll||0});
-  [...$main.querySelectorAll('[data-action="select-company"]')].find(row=>row.dataset.id===state.selectedId)?.focus({preventScroll:true});
+  [...$main.querySelectorAll('[data-action="select-company"],[data-action="go-company"]')].find(row=>row.dataset.id===state.selectedId)?.focus({preventScroll:true});
 }
 function activeAccountList(){
   // Contact data are searchable only when already authorized by the existing backend.
@@ -413,8 +505,33 @@ function renderTimeline(){
     </div>`;
 }
 
+function focusCard(row,{board=false}={}){
+  const next=row.next,latest=row.latestContact,status=row.overdue?'기한 지남':next?'다음 행동 있음':row.recent?'최근 연락':'진행 기록 있음';
+  const summary=row.summary||latest?.title||latest?.purpose||'등록된 연락 내용이 없습니다. 업체를 열어 현재 기록을 확인하세요.';
+  const excerpt=board&&Array.from(summary).length>100?Array.from(summary).slice(0,100).join('')+'…':summary;
+  const age=Number.isInteger(row.stageAgeDays)&&row.stageAgeDays>=0?`현재 단계 ${row.stageAgeDays}일째`:'단계 시작일 미기록';
+  const meta=board?`<dl class="crm-board-card-details"><div><dt>업체 담당</dt><dd>${esc(row.company.owner||'미지정')}</dd></div><div><dt>최근 연락</dt><dd>${row.lastContact?esc(row.lastContact):'기록 없음'}</dd></div></dl>`:`<div class="crm-focus-card-meta"><span class="crm-focus-stage">${esc(row.stageLabel||row.company.stage||'단계 미지정')}</span> · 업체 담당 · ${esc(row.company.owner||'미지정')} · ${row.lastContact?'마지막 연락 '+esc(row.lastContact):'접촉 기록 없음'}${row.openOpportunityCount?' · 진행 제안 '+row.openOpportunityCount+'건':''}</div>`;
+  return `<article class="crm-focus-card ${row.overdue?'is-overdue':''}" data-company-id="${attr(row.companyId)}" data-next-kind="${attr(next?.source||'none')}"><div class="crm-focus-card-head"><button type="button" class="crm-focus-company" data-action="go-company" data-id="${attr(row.companyId)}">${esc(row.name)} <span aria-hidden="true">↗</span></button><span class="crm-focus-status">${board?esc(row.stageLabel||'단계 미지정'):status}</span></div>${meta}
+    <div class="crm-focus-current"><span>마지막 대화</span><p>${esc(excerpt)}</p>${latest?identityHTML(latest,true):''}</div>
+    ${board?`<div class="crm-board-card-footer"><span class="crm-stage-age ${row.stageAgeDays===null?'is-unknown':''}" title="${attr(row.stageAgeReason||'저장된 단계 변경 이력으로 계산합니다.')}">${age}</span>${row.stageSince?`<small>시작 ${esc(row.stageSince)}</small>`:''}${row.overdue?`<span class="crm-board-overdue">기한 지난 업무 ${row.overdue}건</span>`:''}</div>`:''}
+    <div class="crm-focus-next"><div class="crm-focus-next-copy"><span>${next?.source==='meeting'?'예정된 일정':'다음 행동'}</span><p>${esc(next?.title||'아직 정해진 다음 행동이 없습니다.')}</p><small>${next?.due?(next.source==='meeting'?'일정 ':'기한 ')+esc(next.due):next?'기한 미정':'업체에서 후속업무를 추가하세요.'}${row.actions?.length>1?' · 외 '+(row.actions.length-1)+'건':''}</small></div>${state.canWrite&&next?.source==='task'&&next.taskId?`<div class="crm-focus-next-actions">${btn('complete-task','완료','secondary',`data-id="${attr(next.taskId)}"`)}</div>`:''}</div></article>`;
+}
+function renderFocus(){
+  const today=seoulDay(),model=buildFocusRows(state,{today,query:state.focus.q,filter:state.focus.filter});
+  const stageBoard=buildStageBoard(model.rows,{profiles:state.profiles,year:Number(today.slice(0,4)),today:new Date().toISOString()});
+  const all=model.allRows||[],active=all.filter(row=>row.inFocus),overdue=active.filter(row=>row.overdue>0),board=state.focus.layout!=='list';
+  const tones={lead:'neutral',contact:'orange',meeting:'blue',needs:'blue',proposal:'violet',negotiation:'purple',contract:'purple',execution:'green',hold:'neutral',other:'neutral'};
+  const noRows=`<section class="crm-focus-empty">${empty(state.focus.q?'검색한 업체가 이 보기에 없습니다.':'이 보기에 해당하는 업체가 없습니다.','전체 업체에서 검색하거나, 연락·후속업무를 기록하면 여기에 표시됩니다.')}${btn('account-view','전체 업체 보기','secondary','data-view="list"')}</section>`;
+  const note=`<details class="crm-board-help"><summary>표시 기준과 단계 체류기간</summary><p>최근 30일 안에 연락했거나 진행 업무·일정·단계가 있는 고객사를 보여 줍니다. 전체 업체와 협력사는 별도 목록에 보관됩니다. 단계는 저장된 업체 단계 또는 현재 연도의 진행 단계 기준이며, 영업기회·최근 연락으로 추정하지 않습니다. 체류기간은 현재 단계로 바뀐 이력이 있을 때만 계산합니다. 시작일이 없으면 미기록으로 표시합니다.</p><p>대화 자동 저장 연결은 별도이며, 아직 저장되지 않은 대화는 나타나지 않습니다.</p></details>`;
+  const content=board?`${stageBoard.total?`<div class="crm-board-scroll-hint"><strong>${stageBoard.total}곳</strong> · 업체가 있는 단계만 표시합니다. 옆으로 넘겨 다른 단계를 볼 수 있어요.</div><div class="crm-kanban" role="region" aria-label="영업 단계별 업체 보드" tabindex="0">${stageBoard.columns.filter(column=>column.count>0).map(column=>`<section class="crm-board-column" data-stage="${attr(column.key)}" data-tone="${tones[column.key]||'neutral'}" aria-label="${attr(column.label)} ${column.count}개 업체"><header class="crm-board-column-head"><h2>${esc(column.label)}</h2><span class="crm-board-count">${column.count}</span></header><div class="crm-board-cards">${column.rows.map(row=>focusCard(row,{board:true})).join('')}</div></section>`).join('')}</div>`:noRows}${note}`:`<div class="crm-focus-layout"><div class="crm-focus-list">${stageBoard.rows.map(row=>focusCard(row)).join('')||noRows}</div><aside class="crm-focus-note"><p class="eyebrow">TODAY’S FOCUS</p><h2>다음 한 걸음을<br>놓치지 않도록</h2><p>업체를 누르면 현재 상황과 후속업무를 함께 볼 수 있습니다. 지난 대화는 업체 안의 이력에 모았습니다.</p>${note}</aside></div>`;
+  return `<section class="crm-focus-page ${board?'crm-board-page':''}"><div class="crm-focus-hero"><div><p class="eyebrow">DMILLION / SALES WORKSPACE</p><h1 class="page-title">지금 챙길 업체</h1><p class="subtitle">진행 단계와 다음 할 일을 한눈에 확인하세요.</p></div><div class="crm-focus-hero-actions">${state.canWrite?btn('workspace-view','＋ 기록 남기기','primary','data-screen="agent"'):''}</div></div>${accountTabs()}
+    <div class="crm-focus-summary"><div class="crm-focus-stat"><span>챙길 업체</span><strong>${active.length}<small>곳</small></strong></div><div class="crm-focus-stat"><span>후속 행동 있음</span><strong>${active.filter(row=>row.next).length}<small>곳</small></strong></div><div class="crm-focus-stat"><span>기한 지남</span><strong>${overdue.length}<small>곳</small></strong></div></div>
+    <div class="crm-focus-toolbar crm-board-toolbar"><div class="crm-board-views" aria-label="업체 표시 방식">${[['board','단계 보드'],['list','목록']].map(([layout,label])=>`<button type="button" data-action="focus-layout" data-layout="${layout}" aria-pressed="${board?layout==='board':layout==='list'}">${label}</button>`).join('')}</div><input id="focus-q" class="field search-input" value="${attr(state.focus.q)}" placeholder="업체명 · 담당자 · 내용 검색" aria-label="지금 챙길 업체 검색"><div class="crm-focus-filters" aria-label="업체 표시 범위">${[['all','지금 챙길 업체'],['action','후속 행동 있음'],['contacted','연락한 업체']].map(([filter,label])=>`<button type="button" data-action="focus-filter" data-filter="${filter}" class="${state.focus.filter===filter?'active':''}" aria-pressed="${state.focus.filter===filter}">${label}</button>`).join('')}</div></div>${content}
+    <details class="crm-resource-section crm-focus-calendar"><summary>캘린더 확인</summary>${renderCalendar({...state.calendar,demo:state.demo})}</details></section>`;
+}
 function renderAccounts(){
-  if(state.detailOpen&&cc(state.selectedId)&&state.accountView!=='list')return `${heading(cc(state.selectedId).name,'업체 정보와 활동 이력을 넓게 확인합니다.',btn('back-accounts','← 이전 목록으로','secondary'))}<section class="panel company-detail-panel">${renderCompanyDetail()}</section>`;
+  if(state.detailOpen&&cc(state.selectedId)&&state.accountView!=='list')return `<div class="crm-detail-page-back">${btn('back-accounts',state.accountView==='focus'&&state.focus.layout!=='list'?'← 영업 보드로':'← 업체 목록으로','secondary')}</div><section class="panel company-detail-panel">${renderCompanyDetail()}</section>`;
+  if(state.accountView==='focus')return renderFocus();
   if(state.accountView==='timeline')return accountTabs()+renderTimeline();
   if(state.accountView==='coverage')return accountTabs()+renderCoverage();
   if(state.accountView==='home')return accountTabs()+renderHome();
@@ -424,20 +541,14 @@ function renderAccounts(){
   const st=groupStats(scopedCompanies,state.profiles,state.opportunities.filter(o=>scopedIds.has(o.companyId)),state.tasks);
   const overdue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===0).length;
   const todayDue=scopedCompanies.filter(c=>accountPriority(c,state.tasks,today)===1).length;
-  return `${heading('고객 관리','업체를 선택해 정보와 영업활동을 확인하세요.',state.canWrite?btn('new-company','＋ 신규 업체','primary'):'')}${accountTabs()}
-  <div class="stats crm-stats-compact">
-    ${stat('등록된 업체',st.total+'개',f.kind==='partner'?'협력사 기준':f.kind==='all'?'고객사·협력사 전체':'고객사 기준','▦')}
-    ${stat('후속 업무 대상',st.follow+'개','기한 미정 포함','◷')}
-    ${stat('오늘 · 기한 경과',(todayDue+overdue)+'개',`오늘 ${todayDue} · 경과 ${overdue}`,'!')}
-    ${stat('진행 중 영업 기회',st.openOpps+'건','개별 등록 건만 집계','◇')}
-  </div>
-  <details class="crm-updates-disclosure"><summary>최근 업데이트 확인</summary>${renderRecentUpdates({...state,companies:scopedCompanies},state.recent)}</details>
+  return `${heading('전체 업체','필요한 업체를 검색하고, 보관된 정보와 이력을 확인하세요.')}${accountTabs()}
   <div class="account-layout crm-workflow-layout ${state.detailOpen?'has-detail':''}">
     <section class="panel crm-account-list-panel">
       <div class="panel-head"><div><h2 class="panel-title">업체 목록</h2><p class="panel-subtitle">${list.length}개 업체 · 검색한 위치에서 바로 상세 확인</p></div>
-        ${btn('open-import','⇩ 엑셀 비교','secondary')}</div>
+        <details class="crm-more-menu"><summary>업체 관리</summary><div>${state.canWrite?btn('new-company','신규 업체 등록','secondary'):''}${btn('open-import','엑셀 비교·가져오기','secondary')}</div></details></div>
       <div class="toolbar crm-account-toolbar">
         <input id="f-q" class="field search-input" placeholder="업체명 · 초성 · 담당자 · 연락처 · 니즈 검색" value="${attr(f.q)}" aria-label="업체 및 연락처 통합 검색">
+        <details class="crm-filter-disclosure"><summary>필터 · 정렬</summary><div class="crm-secondary-filters">
         <select id="f-kind" class="select" aria-label="업체 구분">${options([['customer','고객사'],['partner','협력사'],['all','고객사·협력사 전체']],f.kind,'대상 선택')}</select>
         <select id="f-owner" class="select" aria-label="디밀리언 영업 담당자 필터">${options(ownerChoices(),f.owner||'','영업 담당 전체')}</select>
         <select id="f-sort" class="select" aria-label="정렬">${options([['priority','우선 연락순'],['action','다음 일정순'],['name','업체명순'],['grade','등급순'],['opportunities','영업 기회순']],f.sort,'정렬')}</select>
@@ -445,6 +556,7 @@ function renderAccounts(){
         <select id="f-market" class="select" aria-label="지원공고사업분류">${options(categoryChoices(),f.market,'사업분류 전체')}</select>
         <select id="f-group" class="select" aria-label="영업 분류">${options(ACTION_GROUPS.map(s=>[s,s]),f.group,'영업 분류 전체')}</select>
         <label class="crm-compact-checkbox"><input type="checkbox" id="f-task" ${f.hasTask?'checked':''}> 후속 업무 있음</label>
+        </div></details>
       </div>
       <div class="table-scroll"><table class="table crm-account-table"><thead><tr>
         <th>업체 · 담당자</th><th>단계 · 등급</th><th>다음 행동</th>
@@ -485,7 +597,7 @@ function taskRow(task,kind='active',index=0){
   const taskId=attr(cid(task));
   const label=kind==='deleted'?'삭제됨':kind==='completed'?(task.status==='cancelled'?'취소':'완료'):'진행 중';
   const actions=state.canWrite?(kind==='active'
-    ?btn('complete-task','완료','secondary',`data-id="${taskId}"`)+btn('delete-task','삭제','danger',`data-id="${taskId}"`)
+    ?btn('complete-task','완료','secondary',`data-id="${taskId}"`)+`<details class="crm-more-menu"><summary aria-label="업무 추가 작업">···</summary><div>${btn('delete-task','삭제','danger',`data-id="${taskId}"`)}</div></details>`
     :kind==='deleted'?btn('restore-task','복구','secondary',`data-id="${taskId}"`):''):'';
   const parts=splitActionItems(task.title);
   const content=parts.length>1
@@ -534,17 +646,18 @@ function renderNeedsView(company,profile) {
 
 function meetingEntry(a){
   const when=activityDate(a),title=a.title||a.type||'미팅';
-  const summary=a.summary||a.report?.purpose||a.purpose||'핵심 내용 미입력';
+  const summary=a.summary||a.content||a.report?.purpose||a.purpose||'핵심 내용 미입력';
   return `<article class="crm-meeting-entry" data-activity-id="${attr(cid(a))}">
     <div class="crm-meeting-entry-top"><span>${fmtDateTime(when)} · ${esc(a.type||'미팅')}</span>
       ${tag(a.status||'완료','outline')}</div>
     <strong>${esc(title)}</strong>
     <p>${esc(summary)}</p>
+    ${identityHTML(a)}
     ${a.attendeesClient&&state.canWrite?`<div class="crm-meeting-foot">고객 참석 · ${esc(a.attendeesClient)}</div>`:''}
     ${a.nextAction?`<div class="crm-meeting-foot">후속 조치 · ${esc(a.nextAction)} ${a.nextDue?'· '+esc(a.nextDue):''}</div>`:''}
   </article>`;
 }
-const detailTabs=[['overview','기본정보'],['progress','진행 현황'],['activities','활동 이력'],['opportunities','제안·견적'],['tasks','후속업무'],['projects','수행 과제'],['documents','문서']];
+const detailTabs=[['resources','자료·상세정보'],['overview','기본정보'],['progress','진행 현황'],['activities','활동 이력'],['opportunities','제안·견적'],['tasks','후속업무'],['projects','수행 과제'],['documents','문서']];
 function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
   const p=state.profiles[cid(c)]||{},opp=state.opportunities.filter(x=>x.companyId===cid(c)),
@@ -554,29 +667,7 @@ function renderCompanyDetail(){
   const {active:activeTasks,completed:completedTasks,deleted:deletedTasks}=taskGroups(cid(c),t);
   const legacyItems=remainingLegacyActions(c,t);
   const next=nextActionFor(c,state.tasks);
-  const overview=`<div class="crm-context-grid"><section><span>핵심 니즈</span><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').slice(0,3).join(' · ')||c.needs||'아직 정리된 니즈가 없습니다.')}</p></section><section class="crm-next-context"><span>다음 행동</span><p>${esc(next?.title||'등록된 후속 업무 없음')}</p><small>${next?.dueAt?asDate(next.dueAt):'일정 미정'}</small></section></div>
-    <div class="crm-context-history"><div class="crm-section-row"><strong>최근 영업 이력</strong><button class="crm-inline-link" type="button" data-action="show-meetings">이력 전체 보기</button></div>${acts.slice(0,3).map(a=>`<article><small>${fmtDateTime(activityDate(a))} · ${esc(a.type||'기록')}</small><strong>${esc(a.title||a.type||'활동 기록')}</strong><p>${esc(a.summary||a.content||'')}</p></article>`).join('')||'<p class="muted">아직 등록된 활동이 없습니다.</p>'}</div>
-    <div class="section-label">업체 핵심정보</div>
-    <dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>관계 단계</dt><dd>${blank(c.stage)}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>
-    <div class="crm-meeting-overview">
-      <div class="crm-section-row"><strong>최근 미팅 · ${meetings.length}건</strong>
-        <button class="crm-inline-link" type="button" data-action="show-meetings">이력 전체 보기</button></div>
-      ${meetings.length?meetings.slice(0,2).map(a=>`
-        <div class="crm-meeting-preview-row"><span>${fmtDateTime(activityDate(a))}</span>
-          <strong>${esc(a.title||a.type||'미팅')}</strong></div>`).join(''):
-        '<p class="crm-empty-preview">아직 등록된 미팅이 없습니다. 미팅 후 내용을 기록해두세요.</p>'}
-    </div>
-    <div class="divider"></div><div class="crm-needs-heading"><div class="section-label">고객의 핵심 니즈</div>
-      ${state.canWrite?btn('edit-needs','니즈 정리·편집','secondary'):''}</div>
-    ${renderNeedsView(c,p)}
-    ${p.contactReason||p.salesComment||p.stallReason?`<details class="crm-notes-details">
-      <summary>연락 명분 · 영업 메모 · 정체 사유 보기</summary>
-      ${p.contactReason?`<div class="insight"><strong>연락 명분·시점</strong><p>${esc(p.contactReason)}</p></div>`:''}
-      ${p.salesComment?`<div class="insight"><strong>영업 메모</strong><p>${esc(p.salesComment)}</p></div>`:''}
-      ${p.stallReason?`<div class="insight"><strong>정체·드랍 사유</strong><p>${esc(p.stallReason)}</p></div>`:''}
-    </details>`:''}
-    <div class="divider"></div>
-`;
+  const companyInfo=`<dl class="info-grid"><dt>산업·업종</dt><dd>${blank(c.industry)}</dd><dt>주요 사업</dt><dd>${blank(c.bizDetail)}</dd><dt>영업 담당</dt><dd>${blank(c.owner)}</dd><dt>저장된 업체 단계</dt><dd>${blank(c.stage)}</dd><dt>지역</dt><dd>${blank(c.region||p.region)}</dd></dl>${state.canWrite?btn('edit-profile','기본정보 편집','secondary'):''}<div class="divider"></div><div class="crm-needs-heading"><strong>고객의 니즈</strong>${state.canWrite?btn('edit-needs','니즈 편집','secondary'):''}</div>${renderNeedsView(c,p)}${p.contactReason||p.salesComment||p.stallReason?`<div class="crm-detail-block"><strong>영업 메모</strong><p>${esc([p.contactReason,p.salesComment,p.stallReason].filter(Boolean).join('\n'))}</p></div>`:''}`;
   const showContact=(value,type)=>state.canWrite?contactDisplay(value,type):'<span class="empty-inline">영업 담당자만 열람</span>';
   const people=`<div class="section-label">고객 담당자 · 연락처</div><dl class="info-grid"><dt>담당자</dt><dd>${showContact(contact.person,'name')}</dd>
     <dt>전화번호</dt><dd>${showContact(contact.phone,'phone')}</dd>
@@ -587,7 +678,8 @@ function renderCompanyDetail(){
     ${state.canWrite?`<div class="detail-actions">${btn('edit-opportunity','제안·견적 편집','secondary',`data-id="${attr(cid(o))}"`)}</div>`:''}</div>`).join('')||empty('등록된 영업 기회가 없습니다.','업체당 여러 제안을 별도 관리할 수 있습니다.')}</div>
     <div class="detail-actions">${state.canWrite?btn('new-opportunity','＋ 제안·견적 추가','primary'):''}</div>`;
   const activities=`<div class="crm-section-row"><strong>활동 이력 · ${acts.length}건</strong>
-    ${state.canWrite?btn('new-meeting','＋ 통화 / 미팅 기록','primary'):''}</div>
+    </div>
+    <p class="small muted crm-identity-note">업체 담당과 기록 작성자는 다를 수 있습니다. 마지막 저장은 해당 기록을 마지막으로 저장한 계정이며, 실제 연락 수행자를 뜻하지 않습니다.</p>
     <div class="crm-meeting-history">
       ${acts.map(meetingEntry).join('')||empty('등록된 미팅 이력이 없습니다.','현장 방문이나 미팅 후 핵심 내용을 기록해보세요.')}
     </div>
@@ -596,24 +688,24 @@ function renderCompanyDetail(){
   const documents=`<div class="section-label">견적·제안서·계약서</div><div class="callout"><h4>기존 문서함 연결</h4><p>파일 권한·원가 자료 보호를 유지하기 위해 문서를 새 화면으로 복사하지 않습니다. 기존 업체 상세의 '문서·구성표'에서 작업하세요.</p></div><div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 업체 문서함 열기 ↗</a></div>`;
   const progressRow=buildTimelineRows([c],state.activities,state.opportunities,state.tasks,{today:localToday(),year:Number(state.timeline.year),profiles:state.profiles,projects:state.projects})[0];
   const progress=`<label>기준 연도 <select id="detail-progress-year" class="select">${options([['2026','2026년 기존 이력'],['2027','2027년 새 진행']],state.timeline.year,'기준 연도')}</select></label>${renderTimelineDetail(progressRow)}`;
-  const tasks=`    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${activeTasks.length+legacyItems.length}항목</div>${state.canWrite?btn('new-task','＋ 추가','primary'):''}</div>
-    <div class="crm-task-list">${activeTasks.map((x,i)=>taskRow(x,'active',i)).join('')}</div>
+  const focus=buildFocusRows({...state,companies:[{...c,kind:'고객사'}]},{today:seoulDay()}).allRows?.[0];
+  const currentBoard=buildStageBoard(focus?[focus]:[],{profiles:state.profiles,year:Number(seoulDay().slice(0,4)),today:new Date().toISOString()}).rows[0];
+  const linkedActions=(focus?.actions||[]).filter(action=>['activity','meeting'].includes(action.source));
+  const tasks=`    <div class="crm-task-heading"><div class="section-label">다음 해야 할 일 · ${focus?.actions.length||0}항목</div></div>
+    <div class="crm-task-list">${(focus?.actions||[]).filter(action=>action.source==='task').map((action,i)=>taskRow(action.raw,'active',i)).join('')}</div>
     ${renderLegacyActions(legacyItems)}
-    ${!activeTasks.length&&!legacyItems.length?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 업체별로 누적됩니다.'):''}
+    <div class="crm-task-list">${linkedActions.map(action=>`<article class="crm-task-row"><div class="crm-task-content"><strong class="crm-task-title">${esc(action.title)}</strong><div class="crm-task-date">${action.source==='meeting'?'예정 일정':'활동 기록의 후속 조치'} · ${action.due?esc(action.due):'기한 미정'}</div></div>${btn('show-meetings','이력 확인','secondary')}</article>`).join('')}</div>
+    ${!focus?.actions.length?empty('진행 중인 업무가 없습니다.','새 업무를 추가하면 업체별로 누적됩니다.'):''}
     ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
     ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
-  const map={overview,people,progress,tasks,opportunities,activities,projects:projectsHtml,documents};
-  return `<div class="panel-body"><div class="detail-top"><div>${tag(p.accountGrade?`${p.accountGrade}등급`:'등급 미지정',(p.accountGrade||'').toLowerCase())}<h2 class="detail-name" tabindex="-1">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'산업 분류 없음')} · ${esc(c.region||p.region||'지역 미입력')}</p></div>${state.canWrite?`<button type="button" class="btn secondary" data-action="edit-profile">편집</button>`:''}</div>
-    <div class="badge-row"><span class="tiny muted">지원공고사업분류</span>${programCategories(p).length?programCategories(p).map(name=>tag(name,'outline')).join(''):tag('미지정','outline')}${tag(`${state.timeline.year}년 · ${progressRow?.stageLabel||c.stage||'단계 미입력'}`,'outline')}${p.outreachBucket?tag(p.outreachBucket,'warning'):''}</div>
-    <details class="crm-contact-disclosure"><summary>고객 담당자 · 연락처 보기</summary>${contactPanel(c)}</details>
-    ${state.canWrite?`<div class="crm-detail-actions">
-      ${btn('new-meeting','＋ 통화 / 미팅 기록','primary')}
-      ${btn('new-task','＋ 후속 업무','secondary')}
-      ${btn('new-opportunity','＋ 제안·견적','secondary')}
-    </div>`:''}
-    <div class="divider"></div><div class="mini-list" style="grid-template-columns:repeat(3,1fr)"><div><strong>${opp.length}</strong><p class="tiny muted">영업 기회</p></div><div><strong>${meetings.length}</strong><p class="tiny muted">미팅 이력</p></div><div><strong>${projects.length}</strong><p class="tiny muted">연계 과제</p></div></div></div>
-    <div class="tabs" role="tablist">${detailTabs.map(([k,v])=>`<button class="tab ${state.companyTab===k?'active':''}" role="tab" aria-selected="${state.companyTab===k}" data-action="company-tab" data-tab="${k}">${v}</button>`).join('')}</div>
-    <div class="panel-body detail-scroll">${map[state.companyTab]||overview}</div>`;
+  const latest=focus?.latestContact;
+  const overview=`<div class="crm-detail-now"><section class="crm-detail-block"><div class="crm-detail-subheading"><span>마지막 대화</span><small>${focus?.lastContact?asDate(focus.lastContact)+' · '+esc(latest?.type||'연락'):'접촉 기록 없음'}</small></div><h3>${esc(latest?.title||latest?.purpose||'연락 내용을 남겨 주세요')}</h3><p>${esc(focus?.summary||'등록된 내용이 없습니다. 실제 미접촉이라는 뜻은 아닙니다.')}</p>${latest?identityHTML(latest):''}</section><section class="crm-detail-block crm-next-context"><div class="crm-detail-subheading"><span>다음 행동</span></div>${tasks}</section><details class="crm-resource-section"><summary>핵심 니즈 확인</summary><div class="crm-context-grid"><section><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').join(' · ')||'등록된 니즈 없음')}</p></section></div></details></div>`;
+  const resourceParts=[['company','업체 정보·니즈',companyInfo],['people','담당자·연락처',contactPanel(c)],['opportunities','제안·견적',opportunities],['progress','연도별 진행 단계',progress],['projects','수행 과제',projectsHtml],['documents','문서',documents]];
+  const resources=resourceParts.map(([key,label,html])=>`<details class="crm-resource-section" ${state.companyTab===key?'open':''}><summary>${label}</summary><div>${html}</div></details>`).join('');
+  const primaryTab=['overview','activities'].includes(state.companyTab)?state.companyTab:state.companyTab==='tasks'?'overview':'resources';
+  return `<div class="panel-body crm-detail-header"><div><div class="crm-detail-kicker">업체 담당 · ${esc(c.owner||'미지정')} · ${esc(currentBoard?.stageLabel||c.stage||'저장된 단계 없음')}</div><h2 class="detail-name" tabindex="-1">${esc(c.name)}</h2><p class="detail-meta">${esc(c.industry||c.kind||'업체')} ${c.region||p.region?'· '+esc(c.region||p.region):''}</p></div>${state.canWrite?`<div class="crm-detail-tools"><details class="crm-more-menu crm-add-menu"><summary class="btn primary">＋ 기록 추가</summary><div>${btn('new-meeting','통화·메일·미팅 기록','secondary')}${btn('new-task','후속업무 추가','secondary')}${btn('new-opportunity','제안·견적 추가','secondary')}</div></details><details class="crm-more-menu"><summary aria-label="업체 추가 작업">···</summary><div>${btn('edit-profile','업체 정보 편집','secondary')}${btn('edit-contact','연락처 수정','secondary',`data-id="${attr(cid(c))}"`)}</div></details></div>`:''}</div>
+    <div class="tabs crm-detail-tabs" role="tablist" aria-label="업체 상세 보기">${[['overview','현재 상황'],['activities','연락·미팅 이력'],['resources','자료·상세정보']].map(([key,label])=>`<button type="button" class="tab ${primaryTab===key?'active':''}" role="tab" aria-selected="${primaryTab===key}" data-action="company-tab" data-tab="${key}">${label}</button>`).join('')}</div>
+    <div class="panel-body detail-scroll">${primaryTab==='overview'?overview:primaryTab==='activities'?activities:resources}</div>`;
 }
 function renderHome(){
   const todo=state.tasks.filter(t=>!['done','cancelled','deleted'].includes(t.status)).sort((a,b)=>(a.dueAt||'9999').localeCompare(b.dueAt||'9999'));
@@ -677,7 +769,7 @@ function renderActivities(){
         <td>${fmtDateTime(activityDate(a))}</td>
         <td><strong class="company-name">${esc(cname(a.companyId))}</strong></td>
         <td>${esc(a.type||'기록')}<div class="small muted">${esc(a.title||'')}</div></td>
-        <td><div class="crm-meeting-table-summary">${esc(a.summary||a.report?.purpose||a.purpose||'내용 미등록')}</div></td>
+        <td><div class="crm-meeting-table-summary">${esc(a.summary||a.content||a.report?.purpose||a.purpose||'내용 미등록')}</div>${identityHTML(a,true)}</td>
         <td>${tag(a.status||'완료','outline')}</td></tr>`).join('')||`<tr><td colspan="5">${empty('조건에 맞는 미팅이 없습니다.','새 미팅 기록을 추가해보세요.')}</td></tr>`}</tbody>
     </table></div>
   </section>`;
@@ -1124,7 +1216,7 @@ function meetingModal(){
       const record={companyId,date:time.toISOString(),type,title,summary,status,
         attendeesClient:safeText(fd.get('attendeesClient')),
         attendeesUs:safeText(fd.get('attendeesUs')),
-        nextAction,nextDue,createdAt,updatedAt:createdAt,source:'crm2'};
+        nextAction,nextDue,createdAt,createdBy:state.userId||null,updatedAt:createdAt,source:'crm2'};
       // The existing sales-management app uses the same activities collection.
       await saveDoc('activities',id,record);
       state.activities.push({_id:id,...record});
@@ -1398,6 +1490,7 @@ function applyImportSession(){
 
 // Event delegation keeps the UI functional after re-renders.
 document.addEventListener('click',async e=>{
+  document.querySelectorAll('.crm-more-menu[open]').forEach(menu=>{if(!menu.contains(e.target))menu.open=false;});
   const closer=e.target.closest('[data-close]');if(closer){closeModal();return;}
   const nav=e.target.closest('[data-nav]');
   if(nav){if(state.screen==='agent'&&nav.dataset.nav!=='agent')agent.stop();state.screen=nav.dataset.nav;state.detailOpen=false;state.companyTab='overview';document.querySelector('.sidebar').classList.remove('open');render();if(state.screen==='intake'){await intake.load();render();}return;}
@@ -1406,7 +1499,9 @@ document.addEventListener('click',async e=>{
   const action=a.dataset.action,id=a.dataset.id;
   try{
     if(action==='workspace-view'){if(state.screen==='agent')agent.stop();state.screen=a.dataset.screen;state.detailOpen=false;render();if(state.screen==='intake'){await intake.load();render();}}
-    else if(action==='account-view'){state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';render();}
+    else if(action==='account-view'){if(state.screen==='agent')agent.stop();state.accountView=a.dataset.view;state.detailOpen=false;state.screen='accounts';document.querySelector('.sidebar').classList.remove('open');render();}
+    else if(action==='focus-layout'){const previous=$main.querySelector('.crm-kanban');if(previous)state.focus.boardLeft=previous.scrollLeft;state.focus.layout=a.dataset.layout==='list'?'list':'board';render();const board=$main.querySelector('.crm-kanban');if(board)board.scrollLeft=state.focus.boardLeft||0;}
+    else if(action==='focus-filter'){state.focus.filter=a.dataset.filter;render();}
     else if(action==='recent-more'){state.recent.limit+=8;render();}
     else if(action==='recent-open'){
       selectCompany(id,false);state.companyTab=detailTabs.some(([key])=>key===a.dataset.tab)?a.dataset.tab:'overview';render();
@@ -1514,7 +1609,7 @@ document.addEventListener('change',async e=>{
     e.target.value='';
   }
 });
-const searchStates={'f-q':'filters','coverage-q':'coverage','timeline-q':'timeline'};
+const searchStates={'focus-q':'focus','f-q':'filters','coverage-q':'coverage','timeline-q':'timeline'};
 bindComposedSearch(document,{
   ids:Object.keys(searchStates),
   onValue:input=>{state[searchStates[input.id]].q=input.value;},
@@ -1531,7 +1626,7 @@ document.addEventListener('input',e=>{
   }
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();document.querySelector('.sidebar').classList.remove('open');}
+  if(e.key==='Escape'){closeModal();document.querySelector('.sidebar').classList.remove('open');document.querySelectorAll('.crm-more-menu[open]').forEach(menu=>{const restore=menu.contains(document.activeElement);menu.open=false;if(restore)menu.querySelector('summary')?.focus();});}
   if(e.key==='Tab'&&!$('modalLayer').classList.contains('hidden')){
     const items=[...$('modal').querySelectorAll('button,input,select,textarea,a[href],[tabindex]')].filter(x=>!x.disabled&&!x.closest('[hidden]')&&x.getClientRects().length);
     const first=items[0],last=items.at(-1);
@@ -1546,3 +1641,4 @@ $('refreshBtn').onclick=refresh;
 $('mobileMenu').onclick=()=>document.querySelector('.sidebar').classList.toggle('open');
 
 boot();
+

@@ -53,7 +53,7 @@ export function createIntakeUI({state,render,toast,showModal,reload}){
   showModal('자료 추가','미팅 메모를 붙여 넣거나 문서를 첨부하세요. 저장 후 업체 연결과 후속업무를 검토할 수 있습니다.',
    `<label>자료 종류<select name="sourceType"><option value="meeting">미팅 메모</option><option value="email">메일 원문</option><option value="document">문서</option></select></label>
     <label>연결 업체 (선택)<select name="companyId">${companyOptions('')}</select></label>
-    <label>제목<input name="title" maxlength="300" placeholder="예: 가온정밀 자동화 미팅"></label>
+    <label>제목<input name="title" maxlength="300" placeholder="[예시] 업체 A 자동화 미팅"></label>
     <label>자료 일시 (미확정이면 비워 두세요)<input name="occurredAt" type="datetime-local"></label>
     <label>파일 (선택, 최대 20MB)<input name="file" type="file"><small>EML·TXT·PDF·DOCX 본문을 읽습니다. 스캔 문서나 그 외 파일은 원본을 보관하고 제목으로 분류합니다.</small></label>
     <label>메모·본문<textarea name="body" rows="7" maxlength="140000" placeholder="후속업무는 '할 일: 제안서 송부'처럼 적으면 후보로 추출됩니다."></textarea></label>`,async fd=>{
@@ -193,3 +193,4 @@ export function createIntakeUI({state,render,toast,showModal,reload}){
  },60000);
  return {render:view,load};
 }
+

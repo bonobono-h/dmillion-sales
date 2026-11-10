@@ -221,7 +221,7 @@
         .subscribe();
       try {
         for (let from = 0; ; from += 1000) {
-          const { data, error } = await sb.from('docs').select('path,data,version,updated_at').eq('collection', path).order('path').range(from, from + 999);
+          const { data, error } = await sb.from('docs').select('path,data,version,updated_at,updated_by').eq('collection', path).order('path').range(from, from + 999);
           if (error) throw error;
           data.forEach(r => put(s, r));
           if (data.length < 1000) break;
@@ -231,12 +231,12 @@
     })();
     return s;
   }
-  function put(s, r) { const cur = s.rows.get(r.path); if (!cur || !(cur.version > r.version)) s.rows.set(r.path, { path: r.path, data: r.data, version: r.version, updated_at: r.updated_at }); }
+  function put(s, r) { const cur = s.rows.get(r.path); if (!cur || !(cur.version > r.version)) s.rows.set(r.path, { path: r.path, data: r.data, version: r.version, updated_at: r.updated_at, updated_by: r.updated_by }); }
   function emit(s) { if (!s.loaded) return; for (const fn of s.subs) { try { fn(); } catch (e) { console.error(e); } } }
   function applyLocal(row) { const s = colls.get(parentOf(row.path)); if (s) { put(s, row); emit(s); } }
   function dropLocal(path) { const s = colls.get(parentOf(path)); if (s && s.rows.delete(path)) emit(s); }
 
-  const docSnap = (path, row) => ({ id: idOf(path), ref: { path }, exists: !!row, updatedAt: row?.updated_at || null, version: row?.version ?? null, data: () => row ? clone(row.data) : undefined });
+  const docSnap = (path, row) => ({ id: idOf(path), ref: { path }, exists: !!row, updatedAt: row?.updated_at || null, updatedBy: row?.updated_by || null, version: row?.version ?? null, data: () => row ? clone(row.data) : undefined });
   const qSnap = docs => ({ docs, size: docs.length, empty: !docs.length, forEach: fn => docs.forEach(fn) });
 
   function query(path, order, lim) {
@@ -280,11 +280,11 @@
         s.subs.add(fn); if (s.loaded) fn();
         return () => s.subs.delete(fn);
       },
-      async get() { const { data, error } = await sb.from('docs').select('path,data,version,updated_at').eq('path', path).maybeSingle(); if (error) throw denied(error); return docSnap(path, data); },
+      async get() { const { data, error } = await sb.from('docs').select('path,data,version,updated_at,updated_by').eq('path', path).maybeSingle(); if (error) throw denied(error); return docSnap(path, data); },
       async set(data) {
         if (me?.role === 'view') throw err('permission-denied', '보기 전용');
         const clean = JSON.parse(JSON.stringify(data || {}));
-        const { data: row, error } = await sb.from('docs').upsert({ path, data: clean }, { onConflict: 'path' }).select('path,data,version,updated_at').single();
+        const { data: row, error } = await sb.from('docs').upsert({ path, data: clean }, { onConflict: 'path' }).select('path,data,version,updated_at,updated_by').single();
         if (error) throw denied(error); applyLocal(row);
       },
       async update(patch) {
@@ -467,3 +467,4 @@
     update: (path, patch) => docRef(path).update(patch),
   };
 })();
+

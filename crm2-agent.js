@@ -53,7 +53,7 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
       <section class="panel panel-body agent-capture">
         <div class="agent-capture-main">
           <button type="button" class="agent-mic ${ui.listening?'listening':''}" data-agent="mic" aria-pressed="${ui.listening}"><span>${ui.listening?'■':'●'}</span><strong>${ui.listening?'듣기 중지':'음성으로 말하기'}</strong><small>${speechSupported?'한국어 음성 인식':'이 브라우저는 음성 인식을 지원하지 않습니다'}</small></button>
-          <div class="agent-input-wrap"><label for="agentTranscript">영업활동 내용</label><textarea id="agentTranscript" rows="8" maxlength="12000" placeholder="예: 오늘 케이블루 담당자와 통화했어. 비전검사에 관심이 있고 다음 주에 공고 자료를 보내주기로 했어.">${esc(ui.transcript)}</textarea><div class="agent-input-foot"><span>연락처·주민번호 등 불필요한 개인정보는 입력하지 마세요.</span><span id="agentCount">${ui.transcript.length.toLocaleString('ko-KR')} / 12,000</span></div></div>
+          <div class="agent-input-wrap"><label for="agentTranscript">영업활동 내용</label><textarea id="agentTranscript" rows="8" maxlength="12000" placeholder="[예시] 업체 A와 통화한 가상 기록입니다. 실제 업체명과 확인한 내용으로 바꾸어 입력하세요.">${esc(ui.transcript)}</textarea><div class="agent-input-foot"><span>연락처·주민번호 등 불필요한 개인정보는 입력하지 마세요.</span><span id="agentCount">${ui.transcript.length.toLocaleString('ko-KR')} / 12,000</span></div></div>
         </div>
         ${ui.error?`<p class="notice warning" role="alert">${esc(ui.error)}</p>`:''}
         ${ui.analysisNotice?`<p class="notice">${esc(ui.analysisNotice)}</p>`:''}
@@ -138,7 +138,7 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
     const action=button.dataset.agent;button.disabled=true;
     try{
       if(action==='mic')startRecognition();
-      else if(action==='example'){ui.transcript='오늘 케이블루 담당자와 통화했어. 비전검사에 관심은 있는데 예산이 부족하대. 내년에 스마트공장 지원사업으로 추진하고 싶다고 했고, 다음 주에 내가 공고 자료를 보내주기로 했어.';ui.draft=null;render();}
+      else if(action==='example'){ui.transcript='[예시 · 실제 활동 아님] 업체 A와 통화한 가상 상황입니다. 비전검사에 관심이 있어 지원사업 자료를 검토하는 예시이며, 후속 행동은 자료 전달입니다. 실제 고객의 요청이나 약속이 아닙니다.';ui.draft=null;render();}
       else if(action==='analyze'||action==='reanalyze')await analyze();
       else if(action==='reset'){ui.result=null;ui.draft=null;ui.transcript='';ui.error='';ui.analysisNotice='';render();}
       else if(action==='company')openCompany(button.dataset.id,false);
@@ -164,3 +164,4 @@ export function createSalesAgentUI({state,render,toast,reload,newCompany,openCom
   });
   return {render:view,stop:stopRecognition};
 }
+
