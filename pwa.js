@@ -1,6 +1,6 @@
 (()=>{
   if('serviceWorker' in navigator){
-    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261104-search-1',{scope:'./'}).catch(()=>{}),{once:true});
+    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261110-entry-1',{scope:'./',updateViaCache:'none'}).catch(()=>{}),{once:true});
   }
 
   const ua=navigator.userAgent||'';
@@ -19,4 +19,5 @@
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',show,{once:true});else show();
 })();
+
 

@@ -10,7 +10,7 @@ test('iPhone home-screen metadata and standalone manifest are present',async()=>
   assert.match(html,/apple-mobile-web-app-capable" content="yes"/);
   assert.match(html,/apple-touch-icon/);
   assert.equal(manifest.display,'standalone');
-  assert.equal(manifest.start_url,'./crm2.html?view=agent&source=home');
+  assert.equal(manifest.start_url,'./crm2.html?source=home');
   assert.deepEqual(manifest.icons.map(icon=>icon.sizes),['192x192','512x512']);
 });
 
@@ -35,3 +35,4 @@ for(const size of [180,192,512])test(`app icon ${size}px is a valid PNG`,async()
   assert.equal(buffer.readUInt32BE(16),size);
   assert.equal(buffer.readUInt32BE(20),size);
 });
+

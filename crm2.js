@@ -83,7 +83,7 @@ const $main=$('main');
 
 const state={
   demo:!!window.CRM2_DEMO,role:'pending',isAdmin:false,canWrite:false,db:null,userId:null,
-  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance',admin:'admin'}[new URLSearchParams(location.search).get('view')]||'accounts'),companyTab:'overview',selectedId:null,
+  screen:({import:'import',accounts:'accounts',intake:'intake',timeline:'timeline',agent:'agent',performance:'performance',admin:'admin'}[new URLSearchParams(location.search).get('source')==='home'?null:new URLSearchParams(location.search).get('view')]||'accounts'),companyTab:'overview',selectedId:null,
   coverage:{q:'',kind:'customer',status:'all',owner:'',group:'',market:'',sort:'attention',threshold:30},
   timeline:{q:'',kind:'customer',year:new URLSearchParams(location.search).get('year')==='2027'?'2027':'2026',stage:'',status:'all',sort:'updated'},
   companies:[],profiles:{},activities:[],projects:[],opportunities:[],tasks:[],contacts:{},categories:[],goals:[],
@@ -620,7 +620,7 @@ function renderLegacyActions(items){
       <div><strong>기존 영업관리 기록 · ${items.length}항목</strong><p>번호별로 구분해 표시했습니다. 원문은 변경하지 않습니다.</p></div>
       <div class="crm-legacy-actions">
         ${state.canWrite?btn('convert-legacy-actions',state.legacyImporting?'등록 중…':'항목별 업무로 등록','secondary',state.legacyImporting?'disabled':''):''}
-        <a class="btn secondary" href="index.html#list">기존 화면에서 수정</a>
+        <a class="btn secondary" href="index.html?legacy=1#list">기존 화면에서 수정</a>
       </div>
     </div>
     <div class="crm-legacy-list">${items.map(part=>`<div class="crm-legacy-item">
@@ -684,8 +684,8 @@ function renderCompanyDetail(){
       ${acts.map(meetingEntry).join('')||empty('등록된 미팅 이력이 없습니다.','현장 방문이나 미팅 후 핵심 내용을 기록해보세요.')}
     </div>
     `;
-  const projectsHtml=`<div class="section-label">연계 사업·과제 · ${projects.length}건</div><div class="mini-list">${projects.map(r=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(r.name||r.title||'과제명 미입력')}</h3>${tag(r.status||r.stage||'진행정보 없음','outline')}</div><p class="mini-desc">${esc(r.programName||r.program||'')} ${r.deadline?'· '+asDate(r.deadline):''}</p></div>`).join('')||empty('등록된 연계 과제가 없습니다.')}</div><div class="notice" style="margin-top:15px">기존 <b>projects.companyIds</b>를 재사용합니다. 정부과제의 선정은 수주로 자동 집계하지 않습니다.</div><div class="detail-actions"><a class="btn secondary" href="index.html#proj">기존 과제 관리 열기 ↗</a></div>`;
-  const documents=`<div class="section-label">견적·제안서·계약서</div><div class="callout"><h4>기존 문서함 연결</h4><p>파일 권한·원가 자료 보호를 유지하기 위해 문서를 새 화면으로 복사하지 않습니다. 기존 업체 상세의 '문서·구성표'에서 작업하세요.</p></div><div class="detail-actions"><a class="btn secondary" href="index.html#list">기존 업체 문서함 열기 ↗</a></div>`;
+  const projectsHtml=`<div class="section-label">연계 사업·과제 · ${projects.length}건</div><div class="mini-list">${projects.map(r=>`<div class="mini-item"><div class="mini-head"><h3 class="mini-title">${esc(r.name||r.title||'과제명 미입력')}</h3>${tag(r.status||r.stage||'진행정보 없음','outline')}</div><p class="mini-desc">${esc(r.programName||r.program||'')} ${r.deadline?'· '+asDate(r.deadline):''}</p></div>`).join('')||empty('등록된 연계 과제가 없습니다.')}</div><div class="notice" style="margin-top:15px">기존 <b>projects.companyIds</b>를 재사용합니다. 정부과제의 선정은 수주로 자동 집계하지 않습니다.</div><div class="detail-actions"><a class="btn secondary" href="index.html?legacy=1#proj">기존 과제 관리 열기 ↗</a></div>`;
+  const documents=`<div class="section-label">견적·제안서·계약서</div><div class="callout"><h4>기존 문서함 연결</h4><p>파일 권한·원가 자료 보호를 유지하기 위해 문서를 새 화면으로 복사하지 않습니다. 기존 업체 상세의 '문서·구성표'에서 작업하세요.</p></div><div class="detail-actions"><a class="btn secondary" href="index.html?legacy=1#list">기존 업체 문서함 열기 ↗</a></div>`;
   const progressRow=buildTimelineRows([c],state.activities,state.opportunities,state.tasks,{today:localToday(),year:Number(state.timeline.year),profiles:state.profiles,projects:state.projects})[0];
   const progress=`<label>기준 연도 <select id="detail-progress-year" class="select">${options([['2026','2026년 기존 이력'],['2027','2027년 새 진행']],state.timeline.year,'기준 연도')}</select></label>${renderTimelineDetail(progressRow)}`;
   const focus=buildFocusRows({...state,companies:[{...c,kind:'고객사'}]},{today:seoulDay()}).allRows?.[0];
