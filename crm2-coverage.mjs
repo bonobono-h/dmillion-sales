@@ -1,4 +1,4 @@
-import {plain, remainingLegacyActions, isMeetingActivity, programCategories} from './crm2-core.mjs?v=20261030-coverage-1';
+import {activityEventDate,canCountActivity,plain, remainingLegacyActions, isMeetingActivity, programCategories} from './crm2-core.mjs?v=20261110-conversation-1';
 import {matchesKoreanSearch} from './crm2-search.mjs?v=20261104-search-1';
 
 export const COVERAGE_STATES = [
@@ -45,14 +45,15 @@ export function buildCoverage(companies, profiles={}, activities=[], tasks=[], s
     const id=idOf(company), profile=profiles[id]||{}, acts=actsBy.get(id)||[], companyTasks=tasksBy.get(id)||[];
     const group=businessGroup(company), owner=plain(company.owner), issues=[];
     const contacts=acts.filter(a=>{
+      if (!canCountActivity(a)) return false;
       if (['예정','취소','cancelled','deleted'].includes(a.status)) return false;
       if (!CONTACT_TYPES.has(a.type)&&!a.meetingRecord) return false;
-      const date=dayKey(a.date||a.at);
+      const date=dayKey(activityEventDate(a));
       if (!date) {issues.push('접촉 기록 날짜 확인');return false;}
       if (date>today) {issues.push('완료 접촉일이 미래 날짜');return false;}
       return true;
-    }).sort((a,b)=>dayKey(b.date||b.at).localeCompare(dayKey(a.date||a.at)));
-    const lastContact=contacts.length?dayKey(contacts[0].date||contacts[0].at):null;
+    }).sort((a,b)=>dayKey(activityEventDate(b)).localeCompare(dayKey(activityEventDate(a))));
+    const lastContact=contacts.length?dayKey(activityEventDate(contacts[0])):null;
     const days=lastContact?Math.round((Date.parse(today)-Date.parse(lastContact))/86400000):null;
     const activeTasks=companyTasks.filter(t=>!CLOSED_TASKS.has(t.status));
     const pending=activeTasks.map(t=>({title:plain(t.title)||'내용 확인 필요',due:dayKey(t.dueAt),source:'task',raw:t}));
@@ -61,15 +62,16 @@ export function buildCoverage(companies, profiles={}, activities=[], tasks=[], s
     for (const part of legacy) pending.push({title:part.text,due:legacy.length===1?dayKey(company.nextDate):null,source:'legacy'});
     // Legacy activity follow-ups may exist independently of CRM tasks.
     for (const activity of acts) {
+      if (!canCountActivity(activity)) continue;
       if (['취소','cancelled','deleted','예정'].includes(activity.status)||activity.nextDone||!plain(activity.nextAction)) continue;
-      const date=dayKey(activity.date||activity.at);
+      const date=dayKey(activityEventDate(activity));
       if (!date||date>today) continue;
       if (companyTasks.some(t=>(idOf(activity)&&t.sourceActivityId===idOf(activity))||plain(t.title)===plain(activity.nextAction))) continue;
       if (pending.some(p=>p.title===plain(activity.nextAction))) continue;
       pending.push({title:plain(activity.nextAction),due:dayKey(activity.nextDue),source:'activity'});
     }
-    const meetings=acts.filter(a=>a.status==='예정'&&isMeetingActivity(a)&&dayKey(a.date||a.at)>=today)
-      .map(a=>({title:a.title||a.type||'예정 미팅',due:dayKey(a.date||a.at),source:'meeting'}));
+    const meetings=acts.filter(a=>canCountActivity(a)&&a.status==='예정'&&isMeetingActivity(a)&&dayKey(activityEventDate(a))>=today)
+      .map(a=>({title:a.title||a.type||'예정 미팅',due:dayKey(activityEventDate(a)),source:'meeting'}));
     const actions=[...pending,...meetings].sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
     const overdue=pending.filter(p=>p.due&&p.due<today).length;
     const undated=pending.filter(p=>!p.due).length;
@@ -113,3 +115,4 @@ export function filterCoverage(rows,filters={}) {
     return rank[a.status]-rank[b.status]||b.overdue-a.overdue||(b.days??-1)-(a.days??-1)||String(a.company.name).localeCompare(String(b.company.name),'ko');
   });
 }
+

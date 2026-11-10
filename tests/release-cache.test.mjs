@@ -37,7 +37,8 @@ function workerHarness(){
     caches:{open:async name=>cacheFor(name),keys:async()=>[...stores.keys()],
       delete:async name=>{deleted.push(name);return stores.delete(name);},
       match:()=>{throw Error('Do not read across release caches');}},
-    fetch:async request=>{
+    fetch:async (request,options)=>{
+      assert.equal(options?.cache,'no-cache','release assets must revalidate the browser HTTP cache');
       requests.push(absolute(request));
       if(!online)throw Error('offline');
       return new Response(body,{status});

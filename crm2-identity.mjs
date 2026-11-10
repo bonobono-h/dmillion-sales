@@ -6,8 +6,14 @@ export function accountLabel(id, profiles={}) {
   const name=profiles[id]?.name;
   return typeof name==='string'&&name.trim()?name.trim():'이름 확인 불가';
 }
+// A descriptive JSON source, not an authenticated account or authorization claim.
+export function activitySourceLabel(activity={}) {
+  const actor=activity.sourceActor;
+  return activity.source==='dot-conversation'&&actor?.kind==='service'&&actor?.id==='dot'
+    ?'dot 대화 정리':'';
+}
 export function activityIdentity(activity={}, {profiles={},lastSavedBy=null}={}) {
   const authorId=accountId(activity.createdBy),editorId=accountId(lastSavedBy);
-  return {authorId,editorId,author:accountLabel(authorId,profiles),editor:accountLabel(editorId,profiles),
+  return {sourceLabel:activitySourceLabel(activity),authorId,editorId,author:accountLabel(authorId,profiles),editor:accountLabel(editorId,profiles),
     participants:typeof activity.attendeesUs==='string'?activity.attendeesUs.trim():''};
 }

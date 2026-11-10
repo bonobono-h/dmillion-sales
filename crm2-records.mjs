@@ -1,4 +1,6 @@
-import {buildTimelineRows,PROGRESS_STAGES} from './crm2-timeline.mjs?v=20261104-records-1';
+import {buildTimelineRows,PROGRESS_STAGES} from './crm2-timeline.mjs?v=20261110-conversation-1';
+
+import {canCountActivity} from './crm2-core.mjs?v=20261110-conversation-1';
 
 export const ACTIVITY_TYPES=['첫 미팅','현장 방문','요구 확인','내방','화상','제안·발표','전화','메일','미팅'];
 export const suggestedProgress=type=>({'첫 미팅':'meeting','현장 방문':'visit','요구 확인':'qualification','제안·발표':'proposal'}[type]||'');
@@ -38,8 +40,9 @@ export function syncProgressFields(state,form,suggest=false){
  if(suggest){const type=input('meetingType')?.value||input('activityType')?.value;input('progressStage').value=suggestedProgress(type)||row?.stageKey||'discovery';}
 }
 
-export function selectedProgress(fd){
+export function selectedProgress(fd,activity=null){
  if(fd.get('updateProgress')!=='on')return null;
+ if(activity&&!canCountActivity(activity))throw new Error('확인 메모 또는 활동일 미상 기록은 진행 단계를 변경할 수 없습니다.');
  const year=Number(fd.get('progressYear')),stage=String(fd.get('progressStage')||'');
  if(![2026,2027].includes(year)||!PROGRESS_STAGES.some(([key])=>key===stage))throw new Error('적용 연도와 변경할 진행 단계를 확인해 주세요.');
  if(fd.get('meetingStatus')==='예정')throw new Error('예정 활동은 진행 단계를 변경할 수 없습니다.');
@@ -48,6 +51,8 @@ export function selectedProgress(fd){
 
 export async function saveProgress(state,id,{year,stage},{sourceActivityId=null,note='',now=new Date().toISOString()}={}){
  if(!state.canWrite)throw new Error('진행 단계 수정 권한이 없습니다.');
+ const source=sourceActivityId&&(state.activities||[]).find(a=>(a._id||a.id)===sourceActivityId);
+ if(source&&!canCountActivity(source))throw new Error('확인 메모 또는 활동일 미상 기록은 진행 단계를 변경할 수 없습니다.');
  if(!state.companies.some(c=>companyId(c)===id))throw new Error('업체 정보를 찾을 수 없습니다.');
  if(![2026,2027].includes(Number(year))||!PROGRESS_STAGES.some(([key])=>key===stage))throw new Error('변경할 진행 단계를 확인해 주세요.');
  let profile=state.profiles[id]||{},exists=!!profile._id,ref;
@@ -83,3 +88,4 @@ export async function saveContact(state,id,values){
  state.contacts[id]=record;(state.contactOverrides??={})[id]=record;
  return record;
 }
+

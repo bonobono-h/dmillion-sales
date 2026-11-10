@@ -45,7 +45,7 @@ test('demo narratives and business claims carry the example marker',()=>{
 test('demo fixture IDs, links, stages and numeric values remain compatible',()=>{
   assert.deepEqual(Object.keys(demoData),['companies','profiles','activities','projects','opportunities','goals','tasks']);
   const expected={companies:['demo-c1','demo-c2','demo-c3','demo-c4','demo-c5'],
-    activities:['demo-a1','demo-a2','demo-a3'],projects:['demo-p1'],
+    activities:['demo-note','demo-a1','demo-a2','demo-a3'],projects:['demo-p1'],
     opportunities:['demo-o1','demo-o2','demo-o3','demo-o4'],goals:['sales-2026Q4'],tasks:['demo-t1','demo-t2']};
   for(const [collection,ids] of Object.entries(expected))assert.deepEqual(demoData[collection].map(record=>record._id),ids);
   const companyIds=new Set(expected.companies),opportunityIds=new Set(expected.opportunities);

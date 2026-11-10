@@ -1,8 +1,8 @@
 /* Read-only customer focus model. No inferred contact, deadlines or waiting states. */
-import {plain, remainingLegacyActions, isMeetingActivity, isOpportunityOpen, relatedProjects} from './crm2-core.mjs';
-import {dayKey} from './crm2-coverage.mjs';
+import {activityEventDate,canCountActivity,plain, remainingLegacyActions, isMeetingActivity, isOpportunityOpen, relatedProjects} from './crm2-core.mjs?v=20261110-conversation-1';
+import {dayKey} from './crm2-coverage.mjs?v=20261110-conversation-1';
 import {matchesKoreanSearch} from './crm2-search.mjs';
-import {PROGRESS_STAGES} from './crm2-timeline.mjs';
+import {PROGRESS_STAGES} from './crm2-timeline.mjs?v=20261110-conversation-1';
 
 const CONTACT_TYPES = new Set(['메일','이메일','통화','전화','문자']);
 // Empty status is the existing legacy completed-activity convention.
@@ -48,13 +48,13 @@ export function buildFocusRows(state={}, {today,query='',filter='all'}={}) {
   const oppsBy=byCompany(state.opportunities||[]);
   const candidates=(state.companies||[]).filter(c=>c.kind!=='협력사').map(company=>{
     const id=idOf(company), tasks=tasksBy.get(id)||[], acts=actsBy.get(id)||[];
-    const contacts=acts.filter(a=>COMPLETED_CONTACT.has(statusOf(a)) &&
+    const contacts=acts.filter(a=>canCountActivity(a)&&COMPLETED_CONTACT.has(statusOf(a)) &&
       (CONTACT_TYPES.has(a.type)||isMeetingActivity(a)) &&
-      dayKey(a.date||a.at) && dayKey(a.date||a.at)<=today)
-      .sort((a,b)=>cmp(dayKey(b.date||b.at),dayKey(a.date||a.at)) ||
-        cmp(b.date||b.at,a.date||a.at) || cmp(idOf(a),idOf(b)));
+      dayKey(activityEventDate(a)) && dayKey(activityEventDate(a))<=today)
+      .sort((a,b)=>cmp(dayKey(activityEventDate(b)),dayKey(activityEventDate(a))) ||
+        cmp(activityEventDate(b),activityEventDate(a)) || cmp(idOf(a),idOf(b)));
     const latestContact=contacts[0]||null;
-    const lastContact=latestContact?dayKey(latestContact.date||latestContact.at):null;
+    const lastContact=latestContact?dayKey(activityEventDate(latestContact)):null;
     const days=lastContact?Math.round((Date.parse(today)-Date.parse(lastContact))/86400000):null;
     const recent=days!==null&&days>=0&&days<=30;
     const activeTasks=tasks.filter(t=>!CLOSED_TASK.has(statusOf(t)));
@@ -62,16 +62,16 @@ export function buildFocusRows(state={}, {today,query='',filter='all'}={}) {
     const legacy=remainingLegacyActions(company,tasks);
     for(const part of legacy) actions.push(action(part.text,legacy.length===1?company.nextDate:null,'legacy',company,{id:part.key,status:null}));
     for(const a of acts) {
-      const title=plain(a.nextAction), date=dayKey(a.date||a.at);
-      if(!COMPLETED_CONTACT.has(statusOf(a))||a.nextDone||!title||!date||date>today) continue;
+      const title=plain(a.nextAction), date=dayKey(activityEventDate(a));
+      if(!canCountActivity(a)||!COMPLETED_CONTACT.has(statusOf(a))||a.nextDone||!title||!date||date>today) continue;
       // Check ALL tasks, including completed/deleted conversions, to avoid resurrection.
       if(tasks.some(t=>(idOf(a)&&t.sourceActivityId===idOf(a))||plain(t.title)===title)) continue;
       if(actions.some(t=>t.title===title)) continue;
       actions.push(action(title,a.nextDue,'activity',a));
     }
-    const meetings=acts.filter(a=>PLANNED.has(statusOf(a))&&isMeetingActivity(a)&&
-      dayKey(a.date||a.at)&&dayKey(a.date||a.at)>=today);
-    for(const a of meetings) actions.push(action(a.title||a.type,a.date||a.at,'meeting',a));
+    const meetings=acts.filter(a=>canCountActivity(a)&&PLANNED.has(statusOf(a))&&isMeetingActivity(a)&&
+      dayKey(activityEventDate(a))&&dayKey(activityEventDate(a))>=today);
+    for(const a of meetings) actions.push(action(a.title||a.type,activityEventDate(a),'meeting',a));
     actions.sort(actionOrder);
     const next=actions[0]||null;
     const overdue=actions.filter(a=>a.source!=='meeting'&&a.due&&a.due<today).length;

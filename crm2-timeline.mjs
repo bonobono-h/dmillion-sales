@@ -1,4 +1,4 @@
-import {STAGE_LABEL,activityDate,isOpportunityOpen,nextActionFor,safeText} from './crm2-core.mjs';
+import {STAGE_LABEL,activityDate,activityReportDate,hasUnknownActivityDate,activityDisplayStatus,isOpportunityOpen,nextActionFor,safeText} from './crm2-core.mjs?v=20261110-conversation-1';
 import {matchesKoreanSearch} from './crm2-search.mjs?v=20261104-search-1';
 
 export const TIMELINE_STAGES = [
@@ -70,8 +70,8 @@ function yearProgressEvent(row,year){
 
 function activityEvent(row){
   const date=timelineDay(activityDate(row));
-  if(!date)return null;
-  return {date,kind:'activity',title:row.title||row.type||'활동 기록',detail:row.summary||row.report?.purpose||row.purpose||'',status:row.status||'완료',id:row._id||row.id};
+  if(!date&&!hasUnknownActivityDate(row))return null;
+  return {date,undated:!date,reportedAt:activityReportDate(row)||null,recordedAt:row.createdAt||null,kind:'activity',title:row.title||row.type||'활동 기록',detail:row.summary||row.report?.purpose||row.purpose||'',status:activityDisplayStatus(row),id:row._id||row.id};
 }
 function taskEvent(row){
   const date=timelineDay(row.updatedAt||row.completedAt||row.createdAt||row.deletedAt);
@@ -129,14 +129,14 @@ export function buildTimelineRows(companies=[],activities=[],opportunities=[],ta
     const savedStage=PROGRESS_STAGES.some(([key])=>key===progress?.stage)?progress.stage:null;
     const progressEvents=(Array.isArray(progress?.history)?progress.history:[]).map(row=>yearProgressEvent(row,year));
     const events=[...acts.map(activityEvent),...visibleTasks.map(taskEvent),...opps.map(opportunityEvent),companyEvent,...progressEvents].filter(Boolean)
-      .sort((a,b)=>compareDate(b.date,a.date));
+      .sort((a,b)=>compareDate(b.date,a.date)||(!a.date&&!b.date?compareDate(b.recordedAt,a.recordedAt):0)||compareDate(a.id,b.id));
     const datedActivities=acts.map(row=>timelineDay(activityDate(row))).filter(Boolean);
     const starts=[...datedActivities,timelineDay(company.createdAt),...opps.map(row=>timelineDay(row.createdAt)).filter(Boolean)].filter(Boolean).sort(compareDate);
     const startDay=starts[0]||null;
     const targetDay=timelineDay(stage.opportunity?.expectedCloseDate);
     const next=nextActionFor(company,tasks);
     const nextDue=timelineDay(next?.dueAt);
-    const latestUpdate=events[0]||null;
+    const latestUpdate=events.find(event=>event.date)||null;
     const recentDays=latestUpdate?.date&&today?daysBetween(latestUpdate.date,today):null;
     const overdue=activeTasks.filter(row=>{
       const due=timelineDay(row.dueAt);return due&&today&&due<today;
@@ -203,3 +203,4 @@ export function timelineScale(rows=[],today,year=null){
     }
   };
 }
+

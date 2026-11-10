@@ -1,5 +1,6 @@
 /* 영업 실적(목표 대비) 계산. 화면 표시용 읽기 전용 계산이며 DB에 쓰지 않습니다. */
-import {timelineDay} from './crm2-timeline.mjs?v=20261104-records-1';
+import {activityDate,activityEventDate,canCountActivity} from './crm2-core.mjs?v=20261110-conversation-1';
+import {timelineDay} from './crm2-timeline.mjs?v=20261110-conversation-1';
 
 export const AGREED_STAGES = ['negotiation','won'];
 export const GOAL_DOC_PREFIX = 'sales-';
@@ -104,8 +105,8 @@ export function buildPerformance({goal = null, opportunities = [], activities = 
   } else if (goal?.end) { daysLeft = 0; weeksLeft = 0; }
 
   const weekActs = activities
-    .filter(a => a && a.status !== '취소' && a.status !== '예정' && inRange(a.date || a.at || a.createdAt, week.start, week.end))
-    .sort((a,b) => String(a.date || a.at || '').localeCompare(String(b.date || b.at || '')));
+    .filter(a => a && canCountActivity(a) && a.status !== '취소' && a.status !== '예정' && inRange(activityDate(a), week.start, week.end))
+    .sort((a,b) => String(activityDate(a)).localeCompare(String(activityDate(b))));
   const thisWeek = {
     ...week,
     activities: weekActs,
@@ -120,7 +121,7 @@ export function buildPerformance({goal = null, opportunities = [], activities = 
     ...nextWeek,
     tasks: openTasks.filter(t => inRange(t.dueAt, day, nextWeek.end)).sort((a,b) => String(a.dueAt).localeCompare(String(b.dueAt))),
     overdue: openTasks.filter(t => { const d = timelineDay(t.dueAt); return d && d < day; }),
-    planned: activities.filter(a => a && a.status === '예정' && inRange(a.date || a.at, day, nextWeek.end))
+    planned: activities.filter(a => a && canCountActivity(a) && a.status === '예정' && inRange(activityEventDate(a), day, nextWeek.end))
   };
 
   return {day, goal, programs, totals, unassigned, daysLeft, weeksLeft, thisWeek, upcoming};
@@ -141,3 +142,4 @@ export function goalDocId(start) {
   const q = Math.floor((Number(d.slice(5,7)) - 1) / 3) + 1;
   return `${GOAL_DOC_PREFIX}${d.slice(0,4)}Q${q}`;
 }
+

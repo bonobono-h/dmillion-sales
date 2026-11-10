@@ -1,18 +1,18 @@
 import {STAGES,STAGE_LABEL,MARKETS,ACTION_GROUPS,normalizeCompanyName,safeText,plain,
   sheetRowsToRecords,getImportPreview,countImportResults,profileFromRow,nextActionFor,
   latestActivity,relatedProjects,groupStats,filteredAccounts,programCategories,taskGroups,
-  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate} from './crm2-core.mjs?v=20261104-search-1';
-import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261104-search-1';
+  buildImportPlan,formatNeedsForCRM,needsItems,splitActionItems,remainingLegacyActions,isMeetingActivity,accountPriority,searchAccounts,isOpportunityOpen,moneyKRW,activityDate,activityReportDate,hasUnknownActivityDate,compareActivityDates,canCountActivity,activityDisplayStatus,isConversationNote} from './crm2-core.mjs?v=20261110-conversation-1';
+import {COVERAGE_STATES,BUSINESS_GROUPS,buildCoverage,filterCoverage} from './crm2-coverage.mjs?v=20261110-conversation-1';
 import {createIntakeUI} from './crm2-intake.js?v=20261110-board-1';
-import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261104-search-1';
-import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261104-records-1';
-import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261104-records-1';
+import {TIMELINE_STAGES,YEAR_TIMELINE_STAGES,PROGRESS_STAGES,buildTimelineRows,filterTimelineRows,timelineScale} from './crm2-timeline.mjs?v=20261110-conversation-1';
+import {ACTIVITY_TYPES,progressFields,syncProgressFields,selectedProgress,saveProgress,saveContact,progressLabel,currentProgress} from './crm2-records.mjs?v=20261110-conversation-1';
+import {pickGoal,buildPerformance,appendStageHistory,goalDocId} from './crm2-performance.mjs?v=20261110-conversation-1';
 import {createSalesAgentUI} from './crm2-agent.js?v=20261110-board-1';
 import {renderCalendar,seoulDay} from './crm2-calendar.mjs?v=20261104-calendar-1';
-import {renderRecentUpdates} from './crm2-updates.mjs?v=20261104-updates-2';
-import {accountLabel,activityIdentity} from './crm2-identity.mjs?v=20261110-identity-1';
+import {renderRecentUpdates} from './crm2-updates.mjs?v=20261110-conversation-1';
+import {accountLabel,activityIdentity} from './crm2-identity.mjs?v=20261110-conversation-1';
 import {buildStageBoard} from './crm2-board.mjs?v=20261110-board-1';
-import {buildFocusRows} from './crm2-focus.mjs?v=20261110-board-1';
+import {buildFocusRows} from './crm2-focus.mjs?v=20261110-conversation-1';
 import {createLiveUpdates} from './crm2-live.mjs?v=20261110-board-1';
 import {activityReviewHTML} from './crm2-review.mjs?v=20261105-workflow-2';
 import {bindComposedSearch} from './crm2-search.mjs?v=20261104-search-1';
@@ -127,7 +127,7 @@ function categoryChoices() {
 }
 
 async function loadDemo(){
-  const {demoData,demoNotice}=await import('./crm2-demo.mjs?v=20261110-identity-1');
+  const {demoData,demoNotice}=await import('./crm2-demo.mjs?v=20261110-conversation-1');
   state.demoNotice=demoNotice;state.userApi=null;state.userProfiles={'demo-user':{name:'[예시] 기록자 가'}};state.docUpdatedBy={};
   state.companies=structuredClone(demoData.companies);
   // Explicitly synthetic stage transitions show how residence age works.
@@ -172,7 +172,7 @@ async function loadActorNames(){
 function identityHTML(activity,compact=false){
   const record=activityIdentity(activity,{profiles:state.userProfiles,lastSavedBy:state.docUpdatedBy['activities/'+cid(activity)]});
   const person=(id,label)=>`<span ${id?`data-person-id="${attr(id)}"`:''}>${esc(label)}</span>`;
-  return `<div class="crm-activity-identity ${compact?'is-compact':''}" aria-label="활동 기록 출처"><span>기록 작성 · ${person(record.authorId,record.author)}</span><span title="마지막으로 저장한 로그인 계정입니다. 최초 작성자나 실제 연락 수행자를 뜻하지 않습니다.">마지막 저장 · ${person(record.editorId,record.editor)}</span>${!compact?`<span>디밀리언 참석 · ${esc(record.participants||'기록 없음')}</span>`:''}</div>`;
+  return `<div class="crm-activity-identity ${compact?'is-compact':''}" aria-label="활동 기록 출처">${record.sourceLabel?`<span title="대화에서 정리한 출처 표시이며 로그인한 직원 계정이나 실제 연락 수행자를 뜻하지 않습니다.">출처 · ${esc(record.sourceLabel)}</span>`:''}<span>기록 작성 · ${person(record.authorId,record.author)}</span><span title="마지막으로 저장한 로그인 계정입니다. 최초 작성자나 실제 연락 수행자를 뜻하지 않습니다.">마지막 저장 · ${person(record.editorId,record.editor)}</span>${!compact?`<span>디밀리언 참석 · ${esc(record.participants||'기록 없음')}</span>`:''}</div>`;
 }
 async function getDocs(db,path) {
   const snap=await db.collection(path).get();
@@ -449,7 +449,7 @@ function renderTimelineDetail(row){
     <section class="timeline-update-panel">
       <div class="timeline-detail-section"><strong>${row.planningYear?`${row.year} 변경 이력`:'최근 업데이트'}</strong><span>${row.planningYear?`단계 변경 ${events.length}건`:`활동 ${row.activityCount}건 · 영업 기회 ${row.opportunityCount}건`}</span></div>
       <div class="timeline-update-list">${events.map((event,index)=>`<article class="timeline-update ${index===0?'latest':''}">
-        <div class="timeline-update-date"><span>${esc(event.date)}</span>${tag(timelineEventLabel(event.kind),'outline')}</div>
+        <div class="timeline-update-date"><span>${esc(event.undated?'활동일 미상':event.date)}${event.undated&&event.reportedAt?' · 대화 보고일 '+esc(event.reportedAt):''}${event.undated&&event.recordedAt?' · CRM 등록 '+esc(event.recordedAt):''}</span>${tag(timelineEventLabel(event.kind),'outline')}</div>
         <strong>${esc(event.title)}</strong>
         ${event.detail?`<p>${esc(event.detail)}</p>`:''}
         <small>${esc(event.status||'')}</small>
@@ -644,12 +644,24 @@ function renderNeedsView(company,profile) {
   </div>`;
 }
 
+function activityWhenHTML(a){
+  const date=activityDate(a),unknown=hasUnknownActivityDate(a);
+  return `${unknown?'활동일 미상':fmtDateTime(date)}${a.source==='dot-conversation'?`<span class="muted tiny crm-activity-report-date">${activityReportDate(a)?' · 대화 보고일 '+esc(activityReportDate(a)):''}${a.createdAt?' · CRM 등록 '+fmtDateTime(a.createdAt):''}</span>`:''}`;
+}
+function conversationNotesHTML(activities){
+  const notes=activities.filter(a=>a.source==='dot-conversation'&&isConversationNote(a))
+    .sort((a,b)=>String(b.createdAt||activityReportDate(b)).localeCompare(String(a.createdAt||activityReportDate(a)))||String(cid(a)).localeCompare(String(cid(b)))).slice(0,3);
+  if(!notes.length)return '';
+  return `<section class="crm-detail-block crm-conversation-notes" aria-label="대화 정리"><div class="crm-detail-subheading"><span>대화 정리</span><small>연락 이력과 별도인 참고 메모</small></div>
+    ${notes.map(a=>{const summary=String(a.summary||'');return `<article data-conversation-note="${attr(cid(a))}"><h3>${esc(a.title||'대화 확인 메모')}</h3><small>${activityWhenHTML(a)}</small><p>${esc(summary.slice(0,600))}${summary.length>600?'…':''}</p>${identityHTML(a,true)}</article>`;}).join('')}
+    ${btn('show-meetings','활동 이력에서 전체 내용 보기','secondary')}</section>`;
+}
 function meetingEntry(a){
   const when=activityDate(a),title=a.title||a.type||'미팅';
   const summary=a.summary||a.content||a.report?.purpose||a.purpose||'핵심 내용 미입력';
   return `<article class="crm-meeting-entry" data-activity-id="${attr(cid(a))}">
-    <div class="crm-meeting-entry-top"><span>${fmtDateTime(when)} · ${esc(a.type||'미팅')}</span>
-      ${tag(a.status||'완료','outline')}</div>
+    <div class="crm-meeting-entry-top"><span>${activityWhenHTML(a)} · ${esc(a.type||'미팅')}</span>
+      ${tag(activityDisplayStatus(a),'outline')}</div>
     <strong>${esc(title)}</strong>
     <p>${esc(summary)}</p>
     ${identityHTML(a)}
@@ -661,7 +673,7 @@ const detailTabs=[['resources','자료·상세정보'],['overview','기본정보
 function renderCompanyDetail(){
   const c=cc(state.selectedId);if(!c)return empty('업체를 선택해 주세요.','왼쪽 목록에서 업체를 선택하면 상세 정보가 표시됩니다.');
   const p=state.profiles[cid(c)]||{},opp=state.opportunities.filter(x=>x.companyId===cid(c)),
-    acts=state.activities.filter(x=>x.companyId===cid(c)).sort((a,b)=>activityDate(b).localeCompare(activityDate(a))),
+    acts=state.activities.filter(x=>x.companyId===cid(c)).sort(compareActivityDates),
     t=state.tasks.filter(x=>x.companyId===cid(c)),projects=relatedProjects(cid(c),state.projects),contact=contactFor(c);
   const meetings=acts.filter(isMeetingActivity),otherActivities=acts.filter(a=>!isMeetingActivity(a));
   const {active:activeTasks,completed:completedTasks,deleted:deletedTasks}=taskGroups(cid(c),t);
@@ -699,7 +711,7 @@ function renderCompanyDetail(){
     ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
     ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
   const latest=focus?.latestContact;
-  const overview=`<div class="crm-detail-now"><section class="crm-detail-block"><div class="crm-detail-subheading"><span>마지막 대화</span><small>${focus?.lastContact?asDate(focus.lastContact)+' · '+esc(latest?.type||'연락'):'접촉 기록 없음'}</small></div><h3>${esc(latest?.title||latest?.purpose||'연락 내용을 남겨 주세요')}</h3><p>${esc(focus?.summary||'등록된 내용이 없습니다. 실제 미접촉이라는 뜻은 아닙니다.')}</p>${latest?identityHTML(latest):''}</section><section class="crm-detail-block crm-next-context"><div class="crm-detail-subheading"><span>다음 행동</span></div>${tasks}</section><details class="crm-resource-section"><summary>핵심 니즈 확인</summary><div class="crm-context-grid"><section><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').join(' · ')||'등록된 니즈 없음')}</p></section></div></details></div>`;
+  const overview=`<div class="crm-detail-now"><section class="crm-detail-block"><div class="crm-detail-subheading"><span>마지막 대화</span><small>${focus?.lastContact?asDate(focus.lastContact)+' · '+esc(latest?.type||'연락'):'접촉 기록 없음'}</small></div><h3>${esc(latest?.title||latest?.purpose||'연락 내용을 남겨 주세요')}</h3><p>${esc(focus?.summary||'등록된 내용이 없습니다. 실제 미접촉이라는 뜻은 아닙니다.')}</p>${latest?identityHTML(latest):''}</section>${conversationNotesHTML(acts)}<section class="crm-detail-block crm-next-context"><div class="crm-detail-subheading"><span>다음 행동</span></div>${tasks}</section><details class="crm-resource-section"><summary>핵심 니즈 확인</summary><div class="crm-context-grid"><section><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').join(' · ')||'등록된 니즈 없음')}</p></section></div></details></div>`;
   const resourceParts=[['company','업체 정보·니즈',companyInfo],['people','담당자·연락처',contactPanel(c)],['opportunities','제안·견적',opportunities],['progress','연도별 진행 단계',progress],['projects','수행 과제',projectsHtml],['documents','문서',documents]];
   const resources=resourceParts.map(([key,label,html])=>`<details class="crm-resource-section" ${state.companyTab===key?'open':''}><summary>${label}</summary><div>${html}</div></details>`).join('');
   const primaryTab=['overview','activities'].includes(state.companyTab)?state.companyTab:state.companyTab==='tasks'?'overview':'resources';
@@ -741,16 +753,16 @@ function renderOpportunities(){
 }
 
 function renderActivities(){
-  const all=state.activities.slice().sort((a,b)=>activityDate(b).localeCompare(activityDate(a)));
+  const all=state.activities.slice().sort(compareActivityDates);
   const scoped=state.meetingScope==='meetings'?all.filter(isMeetingActivity):all;
-  const filtered=state.activityFilter==='all'?scoped:scoped.filter(a=>(a.status||'완료')===state.activityFilter);
+  const filtered=state.activityFilter==='all'?scoped:scoped.filter(a=>activityDisplayStatus(a)===state.activityFilter);
   const meetCount=all.filter(isMeetingActivity).length;
   return `${heading('미팅 이력','고객 미팅·현장 방문 기록을 한곳에서 확인하고 바로 등록합니다.',
     `${state.canWrite?btn('new-meeting','＋ 통화 / 미팅 기록','primary'):''}`)}
   <div class="stats crm-stats-compact">
     ${stat('등록된 미팅',meetCount+'건','기존 기록 포함','▤')}
-    ${stat('완료 미팅',all.filter(a=>isMeetingActivity(a)&&a.status==='완료').length+'건','완료 상태만 집계','✓')}
-    ${stat('예정 미팅',all.filter(a=>isMeetingActivity(a)&&a.status==='예정').length+'건','예정된 기록','◷')}
+    ${stat('완료 미팅',all.filter(a=>canCountActivity(a)&&isMeetingActivity(a)&&a.status==='완료').length+'건','완료 상태만 집계','✓')}
+    ${stat('예정 미팅',all.filter(a=>canCountActivity(a)&&isMeetingActivity(a)&&a.status==='예정').length+'건','예정된 기록','◷')}
     ${stat('기타 활동',all.length-meetCount+'건','기존 기록 보존','☷')}
   </div>
   <section class="panel">
@@ -766,11 +778,11 @@ function renderActivities(){
     <div class="table-scroll"><table class="table crm-meeting-table">
       <thead><tr><th>일시</th><th>업체</th><th>미팅 유형·제목</th><th>요약</th><th>상태</th></tr></thead>
       <tbody>${filtered.slice(0,180).map(a=>`<tr data-action="go-company" data-id="${attr(a.companyId)}" tabindex="0">
-        <td>${fmtDateTime(activityDate(a))}</td>
+        <td>${activityWhenHTML(a)}</td>
         <td><strong class="company-name">${esc(cname(a.companyId))}</strong></td>
         <td>${esc(a.type||'기록')}<div class="small muted">${esc(a.title||'')}</div></td>
         <td><div class="crm-meeting-table-summary">${esc(a.summary||a.content||a.report?.purpose||a.purpose||'내용 미등록')}</div>${identityHTML(a,true)}</td>
-        <td>${tag(a.status||'완료','outline')}</td></tr>`).join('')||`<tr><td colspan="5">${empty('조건에 맞는 미팅이 없습니다.','새 미팅 기록을 추가해보세요.')}</td></tr>`}</tbody>
+        <td>${tag(activityDisplayStatus(a),'outline')}</td></tr>`).join('')||`<tr><td colspan="5">${empty('조건에 맞는 미팅이 없습니다.','새 미팅 기록을 추가해보세요.')}</td></tr>`}</tbody>
     </table></div>
   </section>`;
 }

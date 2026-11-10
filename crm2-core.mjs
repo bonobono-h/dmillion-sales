@@ -251,9 +251,53 @@ export function nextActionFor(company,tasks=[]) {
   return remainder.length?{title:remainder[0].text,dueAt:company.nextDate||null,
     origin:'legacy',unconvertedCount:remainder.length}:null;
 }
-export function activityDate(row){return row.date||row.at||row.createdAt||'';}
+// Opt-in conversation/date semantics. Legacy rows keep their existing date fallbacks.
+export function isConversationNote(row={}) {
+  return row.recordKind==='undated_note' || row.source==='dot-conversation' &&
+    (row.type==='메모'||row.status==='확인 메모');
+}
+function explicitConversationDate(row={}) {
+  const date=typeof row.date==='string'?row.date.trim():'';
+  const day=date.slice(0,10),time=Date.parse(date);
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||day.startsWith('0000')||!Number.isFinite(time)||
+    new Date(day+'T00:00:00Z').toISOString().slice(0,10)!==day)return '';
+  if(row.datePrecision==='day')return date===day?date:'';
+  if(row.datePrecision==='timestamp'){
+    const match=date.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|([+-])(\d{2}):(\d{2}))$/);
+    if(!match||+match[2]>23||+match[3]>59||+(match[4]||0)>59||+(match[8]||0)>14||+(match[9]||0)>59||(+match[8]===14&&+match[9]!==0))return '';
+    return date;
+  }
+  return '';
+}
+export function hasUnknownActivityDate(row={}) {
+  return row.datePrecision==='unknown'||row.recordKind==='undated_note'||
+    row.source==='dot-conversation'&&!explicitConversationDate(row);
+}
+export function activityEventDate(row={}) {
+  if(hasUnknownActivityDate(row))return '';
+  return row.source==='dot-conversation'?explicitConversationDate(row):(row.date||row.at||'');
+}
+export function activityDate(row={}) {
+  if(hasUnknownActivityDate(row))return '';
+  return activityEventDate(row)||row.createdAt||'';
+}
+export function canCountActivity(row={}) {
+  return !isConversationNote(row)&&!hasUnknownActivityDate(row);
+}
+export function activityDisplayStatus(row={}) {
+  return isConversationNote(row)?'확인 메모':row.status||(hasUnknownActivityDate(row)?'상태 확인 필요':'완료');
+}
+export function activityReportDate(row={}) {
+  return row.source==='dot-conversation'?(row.sourceRef?.reportedAt||row.sourceRef?.reportedOn||''):'';
+}
+export function compareActivityDates(a={},b={}) {
+  const ad=activityDate(a),bd=activityDate(b);
+  return String(bd).localeCompare(String(ad)) ||
+    (!ad&&!bd?String(b.createdAt||activityReportDate(b)).localeCompare(String(a.createdAt||activityReportDate(a))):0) ||
+    String(a._id||a.id||'').localeCompare(String(b._id||b.id||''));
+}
 export function latestActivity(companyId,activities=[]){
-  return activities.filter(a=>a.companyId===companyId && a.status!=='취소').filter(a=>activityDate(a))
+  return activities.filter(a=>a.companyId===companyId && a.status!=='취소' && canCountActivity(a)).filter(a=>activityDate(a))
     .sort((a,b)=>activityDate(b).localeCompare(activityDate(a)))[0]||null;
 }
 export function relatedProjects(companyId,projects=[]){
@@ -266,6 +310,7 @@ export function groupStats(accounts,profiles,opps,tasks){
     stalled:accounts.filter(c=>['모르겠음 — 담당자 확인','기록 없음 — 메일 확보 후 일괄'].includes(profiles[c._id]?.outreachBucket)).length};
 }
 export function isMeetingActivity(activity={}) {
+  if(isConversationNote(activity))return false;
   return activity.meetingRecord===true ||
     ['첫 미팅','현장 방문','요구 확인','내방','화상','화상 미팅','대면 미팅','미팅','제안·발표'].includes(activity.type);
 }
@@ -332,3 +377,4 @@ export function moneyKRW(n){
   if(Math.abs(x)>=10000)return `${(x/10000).toLocaleString('ko-KR',{maximumFractionDigits:1})}만원`;
   return `${x.toLocaleString('ko-KR')}원`;
 }
+

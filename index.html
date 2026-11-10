@@ -1258,7 +1258,7 @@ function renderDetail(){
     $('addAct').onclick = () => { view.dtab = 'hist'; view.editAct = null; view.actDraft = null; view.actForm = view.actForm ? null : c._id; renderActForm(c); };
     $('addDoc').onclick = () => { view.docForm = view.docForm ? null : c._id; renderDocForm(c); };
     card.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { view.editAct = b.dataset.edit; view.actDraft = null; view.actForm = c._id; renderActForm(c); $('actFormWrap').scrollIntoView({block:'nearest'}); });
-    card.querySelectorAll('[data-done]').forEach(b => b.onclick = () => save(() => db.doc('activities/' + b.dataset.done).update({status:'완료'}), '완료로 표시했습니다', c.name));
+    card.querySelectorAll('[data-done]').forEach(b => b.onclick = () => protectedConversationNote(acts.find(a=>a._id===b.dataset.done))?toast('확인 메모는 완료 활동으로 바꾸지 않습니다'):save(() => db.doc('activities/' + b.dataset.done).update({status:'완료'}), '완료로 표시했습니다', c.name));
     card.querySelectorAll('[data-deldoc]').forEach(b => { let armed = false; b.onclick = async () => {
       if (!armed) { armed = true; b.textContent = '한 번 더 누르면 삭제'; return; }
       const i = Number(b.dataset.deldoc), d = (c.docs||[])[i]; if (!d) return;
@@ -1433,7 +1433,7 @@ function wireHome(w){
     const [kind, id, idx] = b.dataset.hdone.split(':'), now = new Date().toISOString();
     if (kind === 'pjm') { await pjSetMs(id, Number(idx), true); return; }
     if (kind === 'pja') { await pjSetAg(id, Number(idx), 'done'); return; }
-    if (kind === 'act') { await save(() => db.doc('activities/' + id).update({status:'완료', updatedAt:now}), '완료로 표시했습니다', id); return; }
+    if (kind === 'act') { if(protectedConversationNote(acts.find(a=>a._id===id)))return toast('확인 메모는 완료 활동으로 바꾸지 않습니다'); await save(() => db.doc('activities/' + id).update({status:'완료', updatedAt:now}), '완료로 표시했습니다', id); return; }
     if (kind === 'due') { await save(() => db.doc('activities/' + id).update({nextDone:true, updatedAt:now}), '후속 조치를 완료로 표시했습니다', id); return; }
     const c = companies.find(x => x._id === id); if (!c) return;
     const aid = 'a' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
@@ -1513,10 +1513,37 @@ function renderDocForm(c){
 }
 
 // ---------- activity form (출장 보고) ----------
+function protectedConversationNote(a={}) {
+  return a.datePrecision==='unknown'||a.recordKind==='undated_note'||
+    a.source==='dot-conversation'&&(a.type==='메모'||a.status==='확인 메모');
+}
+function renderConversationNoteForm(c,a) {
+  const w=$('actFormWrap');
+  w.innerHTML=`<form class="f sub" id="conversationNoteF">
+    <p class="full">활동일 미상 · 확인 메모${a.sourceRef?.reportedOn?' · 대화 보고일 '+esc(a.sourceRef.reportedOn):''}${a.createdAt?' · CRM 등록 '+esc(a.createdAt):''}</p>
+    <p class="full muted">제목과 요약만 수정합니다. 날짜·완료 상태·진행 단계·후속 기한은 바뀌지 않습니다.</p>
+    <label class="full">제목<input name="title" maxlength="160" value="${esc(a.title||'')}"></label>
+    <label class="full">핵심 요약<textarea name="summary" maxlength="150000">${esc(a.summary||'')}</textarea></label>
+    <div class="formbar"><button type="button" class="btn ghost" id="noteCancel">취소</button><button type="submit" class="btn primary">저장</button></div></form>`;
+  $('noteCancel').onclick=()=>{if(saving)return;view.actForm=null;view.editAct=null;view.actDraft=null;renderActForm(c);};
+  const form=$('conversationNoteF');let saving=false;
+  form.onsubmit=async e=>{
+    e.preventDefault();if(saving||view.editAct!==a._id)return;
+    if(!cw())return toast('읽기 전용 권한이라 저장할 수 없습니다');
+    const title=form.elements.title.value.trim(),summary=form.elements.summary.value.trim();
+    if(title===(a.title||'')&&summary===(a.summary||'')){view.actForm=null;view.editAct=null;view.actDraft=null;renderAll();return;}
+    if(title.length>160||summary.length>150000)return toast('제목 또는 본문이 너무 깁니다');
+    saving=true;form.querySelector('[type=submit]').disabled=true;form.querySelector('#noteCancel').disabled=true;
+    try {
+      const ok=await save(()=>db.doc('activities/'+a._id).update({title,summary,updatedAt:new Date().toISOString()}),'확인 메모를 고쳤습니다',c.name);
+      if(ok&&view.editAct===a._id&&$('conversationNoteF')===form){view.actForm=null;view.editAct=null;view.actDraft=null;renderAll();}
+    } finally {saving=false;form.querySelector('[type=submit]').disabled=false;form.querySelector('#noteCancel').disabled=false;}
+  };
+}
 function actDraftFor(){
   if (view.actDraft) return view.actDraft;
   const a = view.editAct ? acts.find(x => x._id === view.editAct) || {} : {}, r = a.report || {};
-  view.actDraft = {date: toLocalInput(a.date) || toLocalInput(new Date().toISOString()), type: a.type || '현장 방문', title: a.title || '', summary: a.summary || '',
+  view.actDraft = {date: toLocalInput(a.date) || (view.editAct&&protectedConversationNote(a)?'':toLocalInput(new Date().toISOString())), type: a.type || '현장 방문', title: a.title || '', summary: a.summary || '',
     attendeesClient: a.attendeesClient || '', attendeesUs: a.attendeesUs || '', status: a.status || '완료', nextAction: a.nextAction || '', nextDue: a.nextDue || '',
     purpose: r.purpose || '', decisionMaker: r.decisionMaker || '', problem: r.problem || '', proposal: r.proposal || '', reaction: r.reaction || '', blockers: r.blockers || '',
     equipment: r.equipment || [], transcript: a.transcript || '', transcriptAsset: a.transcriptAsset || '',
@@ -1526,6 +1553,8 @@ function actDraftFor(){
 function renderActForm(c){
   const w = $('actFormWrap'); if (!w) return;
   if (view.actForm !== c._id) { w.innerHTML = ''; return; }
+  const existing=view.editAct&&acts.find(a=>a._id===view.editAct);
+  if(existing&&protectedConversationNote(existing)){renderConversationNoteForm(c,existing);return;}
   const d = actDraftFor();
   const ta = (k, label, ph, full=true, rows=2) => `<label class="${full?'full':''}">${label}<textarea data-k="${k}" rows="${rows}" placeholder="${ph}">${esc(d[k])}</textarea></label>`;
   const eq = (d.equipment||[]).filter(e => e.category || e.supplier || e.model);
