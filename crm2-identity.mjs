@@ -8,6 +8,7 @@ export function accountLabel(id, profiles={}) {
 }
 // A descriptive JSON source, not an authenticated account or authorization claim.
 export function activitySourceLabel(activity={}) {
+  if(activity.source==='crm2-note')return '직접 작성 메모';
   const actor=activity.sourceActor;
   return activity.source==='dot-conversation'&&actor?.kind==='service'&&actor?.id==='dot'
     ?'dot 대화 정리':'';

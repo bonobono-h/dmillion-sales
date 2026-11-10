@@ -1534,14 +1534,14 @@ function renderConversationNoteForm(c,a) {
     <p class="full">${esc(legacyActivityDate(a))} · ${esc(dayOnly?(a.status||'상태 확인 필요'):'확인 메모')}${a.sourceRef?.reportedOn?' · 대화 보고일 '+esc(a.sourceRef.reportedOn):''}${a.createdAt?' · CRM 등록 '+esc(a.createdAt):''}</p>
     <p class="full muted">제목과 요약만 수정합니다. 날짜·완료 상태·진행 단계·후속 기한은 바뀌지 않습니다.</p>
     <label class="full">제목<input name="title" maxlength="160" value="${esc(a.title||'')}"></label>
-    <label class="full">핵심 요약<textarea name="summary" maxlength="150000">${esc(a.summary||'')}</textarea></label>
+    <label class="full">핵심 요약<textarea name="summary">${esc(a.summary||'')}</textarea></label>
     <div class="formbar"><button type="button" class="btn ghost" id="noteCancel">취소</button><button type="submit" class="btn primary">저장</button></div></form>`;
   $('noteCancel').onclick=()=>{if(saving)return;view.actForm=null;view.editAct=null;view.actDraft=null;renderActForm(c);};
   const form=$('conversationNoteF');let saving=false;
   form.onsubmit=async e=>{
     e.preventDefault();if(saving||view.editAct!==a._id)return;
     if(!cw())return toast('읽기 전용 권한이라 저장할 수 없습니다');
-    const title=form.elements.title.value.trim(),summary=form.elements.summary.value.trim();
+    const title=form.elements.title.value.trim(),summary=form.elements.summary.value;
     if(title===(a.title||'')&&summary===(a.summary||'')){view.actForm=null;view.editAct=null;view.actDraft=null;renderAll();return;}
     if(title.length>160||summary.length>150000)return toast('제목 또는 본문이 너무 깁니다');
     saving=true;form.querySelector('[type=submit]').disabled=true;form.querySelector('#noteCancel').disabled=true;

@@ -9,6 +9,17 @@ const esc=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt
 const companyId=c=>c._id||c.id;
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value)?value:{};
 
+// A freeform note is informational, never evidence of a contact or a schedule.
+// Validate emptiness without changing the text the person entered.
+export function freeformNoteRecord({companyId,summary,createdBy=null,now=new Date().toISOString()}={}){
+ if(typeof summary!=='string'||!summary.trim())throw new Error('메모를 입력해 주세요.');
+ if(summary.length>150000)throw new Error('메모는 15만 자 이내로 입력해 주세요.');
+ if(typeof companyId!=='string'||!companyId)throw new Error('업체 정보를 찾을 수 없습니다.');
+ return {companyId,title:'메모',summary,type:'메모',status:'확인 메모',
+  source:'crm2-note',recordKind:'undated_note',date:null,datePrecision:'unknown',meetingRecord:false,
+  createdBy,createdAt:now,updatedAt:now};
+}
+
 export function currentProgress(state,id,year){
  const company=state.companies.find(c=>companyId(c)===id);
  return company?buildTimelineRows([company],state.activities,state.opportunities,state.tasks,{year,profiles:state.profiles,projects:state.projects})[0]:null;

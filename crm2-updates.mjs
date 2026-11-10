@@ -23,7 +23,7 @@ export function buildRecentUpdates(state,{period='week',type='all',limit=8,now=n
     let at=stampFor(state,path,row,extra),basis='recorded';
     if(at===null){at=validStamp(fallback);basis='activity';}
     if(at===null||at<since||at>until||type!=='all'&&kind!==type&&!(type==='activity'&&kind==='mail'))return;
-    events.push({companyId,path,recordId:id(row),kind,title:text(title),summary:text(summary),tab,at,basis,nextAction:text(nextAction),activityDate:text(activityEventDate(row)||(!hasUnknownActivityDate(row)?row.datetime:'')),undated:hasUnknownActivityDate(row),reportedAt:activityReportDate(row),conversationNote:isConversationNote(row),status:text(row.status)});
+    events.push({companyId,path,recordId:id(row),kind,title:text(title),summary:text(summary),tab,at,basis,nextAction:text(nextAction),activityDate:text(activityEventDate(row)||(!hasUnknownActivityDate(row)?row.datetime:'')),undated:hasUnknownActivityDate(row),reportedAt:activityReportDate(row),conversationNote:isConversationNote(row),manualNote:row.source==='crm2-note',status:text(row.status)});
   }
   for(const a of state.activities||[]){
     const mail=/메일|이메일|email/i.test(a.type||'');
@@ -60,10 +60,10 @@ export function renderRecentUpdates(state,options={}){
   const selected=(a,b)=>a===b?' selected':'';
   return `<section class="crm-recent panel" aria-label="최근 영업 업데이트"><div class="panel-head"><div><h2 class="panel-title">최근 영업 업데이트</h2><p class="panel-subtitle">${model.totalCompanies}개 업체 · ${model.totalChanges}개 기록 변경 · 최근 반영 순</p></div><div class="crm-recent-filters"><label>기간<select id="recent-period" aria-label="최근 업데이트 기간">${[['today','오늘'],['week','최근 7일'],['month','최근 30일'],['all','전체 기간']].map(([v,l])=>`<option value="${v}"${selected(v,period)}>${l}</option>`).join('')}</select></label><label>업데이트 종류<select id="recent-type" aria-label="업데이트 종류">${[['all','전체'],['mail','메일'],['activity','전체 활동'],['task','후속업무'],['opportunity','제안·견적'],['project','수행 과제'],['info','업체 정보']].map(([v,l])=>`<option value="${v}"${selected(v,type)}>${l}</option>`).join('')}</select></label></div></div>
     <div class="panel-body"><div class="crm-recent-grid">${model.cards.map(c=>{
-      const e=c.latest,recorded=e.basis==='recorded',kind=e.conversationNote?'대화 확인 메모':typedLabel[e.kind],preview=c.changes.slice(1,3);
+      const e=c.latest,recorded=e.basis==='recorded',kind=e.manualNote?'직접 작성 메모':e.conversationNote?'대화 확인 메모':typedLabel[e.kind],preview=c.changes.slice(1,3);
       return `<article class="crm-recent-card" data-recent-company="${esc(c.companyId)}"><div class="crm-recent-card-top"><span class="crm-recent-kind ${esc(e.kind)}">${esc(kind)}</span><span class="crm-recent-work">${esc(c.followup)}</span></div>
         <h3>${esc(c.companyName)}</h3><div class="crm-recent-meta">${c.stageYear?esc(c.stageYear)+'년 ':''}영업 단계: ${esc(c.stage)} · ${esc(c.owner)}</div><div class="crm-recent-time">${recorded?'CRM 반영':'활동 날짜'} ${esc(updateTime(e))}${recorded?'':' · 반영 시각 미기록'}</div>
-        ${e.undated?'<p class="crm-recent-activity-date">활동일 미상</p>':''}${e.reportedAt?`<p class="crm-recent-report-date">대화 보고일 ${esc(e.reportedAt)}</p>`:''}<h4>${esc(e.title)}</h4><p class="crm-recent-summary">${esc(e.summary||'변경 내용을 상세에서 확인하세요.')}</p>
+        ${e.undated&&!e.manualNote?'<p class="crm-recent-activity-date">활동일 미상</p>':''}${e.reportedAt?`<p class="crm-recent-report-date">대화 보고일 ${esc(e.reportedAt)}</p>`:''}<h4>${esc(e.title)}</h4><p class="crm-recent-summary">${esc(e.summary||'변경 내용을 상세에서 확인하세요.')}</p>
         ${preview.length?`<details class="crm-recent-more"><summary>함께 바뀐 기록 ${c.changes.length-1}건</summary>${c.changes.slice(1).map(x=>`<button type="button" data-action="recent-open" data-id="${esc(c.companyId)}" data-tab="${esc(x.tab)}" data-record="${esc(x.recordId)}">${esc(typedLabel[x.kind])} · ${esc(x.title)}</button>`).join('')}</details>`:''}
         <div class="crm-recent-next"><span>다음 행동</span><p>${esc(c.nextAction||'등록된 다음 행동 없음')}</p></div><button class="btn secondary" type="button" data-action="recent-open" data-id="${esc(c.companyId)}" data-tab="${esc(e.tab)}" data-record="${esc(e.recordId)}">변경 내용 보기 →</button></article>`;
     }).join('')||'<div class="empty-state"><strong>선택한 기간에 업데이트된 기록이 없습니다.</strong><p>기간이나 업데이트 종류를 바꿔 확인하세요.</p></div>'}</div>

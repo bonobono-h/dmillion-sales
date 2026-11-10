@@ -276,6 +276,8 @@ body { background: var(--soft); }
 .crm-meeting-entry-top { color: #70758b; font-size: 10px; margin-bottom: 10px; }
 .crm-meeting-entry > strong { color: #414861; font-size: 13px; line-height: 1.6; margin-bottom: 8px; }
 .crm-meeting-entry > p { color: #686f88; font-size: 12px; line-height: 1.85; }
+.crm-note-text { white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 4; }
+.form .crm-freeform-note textarea { min-height: 240px; font-size: 16px; line-height: 1.85; resize: vertical; }
 
 /* Sample data and attribution remain visible, without competing with the work. */
 .crm-demo-notice { margin: 0 auto 22px; max-width: 1190px; padding: 11px 14px; border: 1px solid #eee1c8; border-left: 3px solid #dbba7c; border-radius: 8px; background: #fffbf3; color: #856a42; font-size: 11px; line-height: 1.75; overflow-wrap: anywhere; }

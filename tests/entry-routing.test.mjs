@@ -23,11 +23,11 @@ test('explicit legacy tools and auth callback hashes are not redirected',()=>{
   assert.equal(destination('https://bonobono-h.github.io/dmillion-sales/index.html'+suffix),null,suffix);
  }
 });
-test('legacy application matches the reviewed date-safety editor revision',()=>{
+test('legacy application matches the reviewed date-safety and raw-note editor revision',()=>{
  const original=Buffer.from(html.replace(script[0],''));
  const sha=createHash('sha1').update('blob '+original.length+'\0').update(original).digest('hex');
- // Intentional date-safety editor patch; regression/DOM tests cover its behavior.
- assert.equal(sha,'d0164f4c5f9557c4570482144a926abb620d62bd');
+ // Intentional date-safety/raw-note editor patches; regression/DOM tests cover their behavior.
+ assert.equal(sha,'e69d8acbde2a43ceb5ce18a45eb8a51b6bcfb32a');
 });
 test('new CRM keeps explicit routes to legacy documents and projects',async()=>{
  const [app,page]=await Promise.all(['crm2.js','crm2.html'].map(path=>readFile(new URL('../'+path,import.meta.url),'utf8')));
