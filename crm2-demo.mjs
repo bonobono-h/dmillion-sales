@@ -19,7 +19,7 @@ export const demoData = {
   },
   activities:[
     {_id:'demo-note',companyId:'demo-c1',source:'dot-conversation',sourceActor:{kind:'service',id:'dot',label:'dot'},sourceRef:{conversationId:'demo-thread',messageId:'demo-message',eventId:'demo-note',reportedOn:'2026-11-10',timeZone:'Asia/Seoul',reportedAt:null},createdAt:'2026-11-10T00:00:00Z',recordKind:'undated_note',datePrecision:'unknown',date:null,type:'메모',status:'확인 메모',meetingRecord:false,title:'[예시] 자료 검토 상황 정리',summary:'[예시] 시제품 자료를 검토 중이며 다음 미팅 일자는 미정입니다. 실제 연락일은 확인되지 않은 가상 메모입니다.'},
-    {_id:'demo-a1',companyId:'demo-c1',date:'2026-10-22T10:00:00',type:'현장 방문',status:'완료',purpose:'[예시] 공정 자동화 요구 검토',summary:'[예시] 검사 장비와 컨베이어 연계 가능성을 확인한 가상 활동'},
+    {_id:'demo-a1',companyId:'demo-c1',date:'2026-10-22',datePrecision:'day',recordKind:'completed_activity',source:'dot-conversation',sourceActor:{kind:'service',id:'dot',label:'dot'},sourceRef:{conversationId:'demo-thread',messageId:'demo-visit',eventId:'demo-visit',reportedOn:'2026-11-10',timeZone:'Asia/Seoul',reportedAt:null},createdAt:'2026-11-10T00:00:00Z',type:'현장 방문',status:'완료',purpose:'[예시] 공정 자동화 요구 검토',summary:'[예시] 검사 장비와 컨베이어 연계 가능성을 확인한 가상 활동'},
     {_id:'demo-a2',companyId:'demo-c1',date:'2026-10-10T11:00:00',type:'전화',status:'완료',purpose:'[예시] 미팅 일정 조율'},
     {_id:'demo-a3',companyId:'demo-c2',date:'2026-10-21T14:00:00',type:'미팅',status:'완료',purpose:'[예시] 용접 자동화 요구 확인'}
   ],

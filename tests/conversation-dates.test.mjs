@@ -81,3 +81,12 @@ test('both selection and low-level progress save reject informational activity s
  assert.equal(JSON.stringify(data),before);
 });
 
+test('day-only completed visit remains a completed contact and meeting with no invented time or planned follow-up',()=>{
+ const visit={...exact,_id:'day-visit',type:'현장 방문',date:'2026-11-09',datePrecision:'day',status:'완료',nextDue:null};
+ const before=JSON.stringify(visit);
+ assert.equal(activityDate(visit),'2026-11-09');assert.equal(activityEventDate(visit),'2026-11-09');assert.equal(activityDisplayStatus(visit),'완료');assert.equal(canCountActivity(visit),true);assert.equal(isMeetingActivity(visit),true);
+ const focus=buildFocusRows(state([visit]),{today:'2026-11-10'}).allRows[0];assert.equal(focus.contactCount,1);assert.equal(focus.lastContact,'2026-11-09');assert.equal(focus.actions.length,0);
+ const p=buildPerformance({activities:[visit],today:'2026-11-10'});assert.equal(p.thisWeek.meetings.length,1);assert.equal(p.thisWeek.contacts.length,0);assert.equal(p.upcoming.planned.length,0);
+ const timeline=buildTimelineRows([company],[visit],[],[],{today:'2026-11-10'})[0];assert.equal(timeline.latestUpdate.date,'2026-11-09');assert.equal(timeline.stageKey,'discovery');assert.equal(timeline.nextDue,null);
+ assert.equal(JSON.stringify(visit),before);
+});

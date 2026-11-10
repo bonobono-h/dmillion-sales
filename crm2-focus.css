@@ -611,6 +611,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 @media (min-width: 1600px) {
   .crm-board-column { flex-basis: 300px; }
 }
+/* The board needs the workspace width, not the centered reading-width wrapper.
+ * Keep that wrapper for lists/details, and keep mobile's swipe-sized columns.
+ * Sparse search results stop growing before cards become too wide to scan.
+ */
+@media (min-width: 781px) {
+  .main:has(> .crm-board-page) { max-width: none; }
+  .crm-board-column { flex-grow: 1; max-width: 420px; }
+}
 @media (max-width: 780px) {
   .crm-board-page .crm-focus-hero .page-title { font-size: 28px; }
   .crm-board-page .crm-focus-summary { gap: 7px; }

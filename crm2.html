@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="crm2-calendar.css?v=20261104-calendar-4">
   <link rel="stylesheet" href="crm2-updates.css?v=20261104-updates-2">
   <link rel="stylesheet" href="crm2-workflow.css?v=20261110-live-1">
-  <link rel="stylesheet" href="crm2-focus.css?v=20261110-conversation-1">
+  <link rel="stylesheet" href="crm2-focus.css?v=20261110-wide-1">
   <script src="pwa.js?v=20261110-conversation-1" defer></script>
   <script type="module">
     import {readyReleaseWorker} from './crm2-bootstrap.mjs?v=20261110-conversation-1';
@@ -33,7 +33,7 @@
         }).catch(e=>{document.querySelector('#loadingText').textContent=e.message;throw e;});
       }
     }
-    await import('./crm2.js?v=20261110-conversation-1');
+    await import('./crm2.js?v=20261110-wide-1');
   </script>
 </head>
 <body>

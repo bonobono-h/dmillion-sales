@@ -127,7 +127,7 @@ function categoryChoices() {
 }
 
 async function loadDemo(){
-  const {demoData,demoNotice}=await import('./crm2-demo.mjs?v=20261110-conversation-1');
+  const {demoData,demoNotice}=await import('./crm2-demo.mjs?v=20261110-wide-1');
   state.demoNotice=demoNotice;state.userApi=null;state.userProfiles={'demo-user':{name:'[예시] 기록자 가'}};state.docUpdatedBy={};
   state.companies=structuredClone(demoData.companies);
   // Explicitly synthetic stage transitions show how residence age works.
@@ -449,7 +449,7 @@ function renderTimelineDetail(row){
     <section class="timeline-update-panel">
       <div class="timeline-detail-section"><strong>${row.planningYear?`${row.year} 변경 이력`:'최근 업데이트'}</strong><span>${row.planningYear?`단계 변경 ${events.length}건`:`활동 ${row.activityCount}건 · 영업 기회 ${row.opportunityCount}건`}</span></div>
       <div class="timeline-update-list">${events.map((event,index)=>`<article class="timeline-update ${index===0?'latest':''}">
-        <div class="timeline-update-date"><span>${esc(event.undated?'활동일 미상':event.date)}${event.undated&&event.reportedAt?' · 대화 보고일 '+esc(event.reportedAt):''}${event.undated&&event.recordedAt?' · CRM 등록 '+esc(event.recordedAt):''}</span>${tag(timelineEventLabel(event.kind),'outline')}</div>
+        <div class="timeline-update-date"><span>${esc(event.undated?'활동일 미상':event.date)}${event.kind==='activity'&&dayOnlyConversationActivity(state.activities.find(a=>cid(a)===event.id))?' · 시간 미상':''}${event.undated&&event.reportedAt?' · 대화 보고일 '+esc(event.reportedAt):''}${event.undated&&event.recordedAt?' · CRM 등록 '+esc(event.recordedAt):''}</span>${tag(timelineEventLabel(event.kind),'outline')}</div>
         <strong>${esc(event.title)}</strong>
         ${event.detail?`<p>${esc(event.detail)}</p>`:''}
         <small>${esc(event.status||'')}</small>
@@ -644,9 +644,12 @@ function renderNeedsView(company,profile) {
   </div>`;
 }
 
+function dayOnlyConversationActivity(a){
+  return a?.source==='dot-conversation'&&a.datePrecision==='day'&&!hasUnknownActivityDate(a);
+}
 function activityWhenHTML(a){
   const date=activityDate(a),unknown=hasUnknownActivityDate(a);
-  return `${unknown?'활동일 미상':fmtDateTime(date)}${a.source==='dot-conversation'?`<span class="muted tiny crm-activity-report-date">${activityReportDate(a)?' · 대화 보고일 '+esc(activityReportDate(a)):''}${a.createdAt?' · CRM 등록 '+fmtDateTime(a.createdAt):''}</span>`:''}`;
+  return `<span class="crm-activity-event-date">${unknown?'활동일 미상':dayOnlyConversationActivity(a)?esc(date)+' · 시간 미상':fmtDateTime(date)}</span>${a.source==='dot-conversation'?`<span class="muted tiny crm-activity-report-date">${activityReportDate(a)?' · 대화 보고일 '+esc(activityReportDate(a)):''}${a.createdAt?' · CRM 등록 '+fmtDateTime(a.createdAt):''}</span>`:''}`;
 }
 function conversationNotesHTML(activities){
   const notes=activities.filter(a=>a.source==='dot-conversation'&&isConversationNote(a))
@@ -711,7 +714,7 @@ function renderCompanyDetail(){
     ${completedTasks.length?`<details class="crm-task-history"><summary>완료·취소 이력 ${completedTasks.length}건</summary><div class="crm-task-list">${completedTasks.map((x,i)=>taskRow(x,'completed',i)).join('')}</div></details>`:''}
     ${deletedTasks.length?`<details class="crm-task-history"><summary>삭제한 업무 ${deletedTasks.length}건 · 복구 가능</summary><div class="crm-task-list">${deletedTasks.map((x,i)=>taskRow(x,'deleted',i)).join('')}</div></details>`:''}`;
   const latest=focus?.latestContact;
-  const overview=`<div class="crm-detail-now"><section class="crm-detail-block"><div class="crm-detail-subheading"><span>마지막 대화</span><small>${focus?.lastContact?asDate(focus.lastContact)+' · '+esc(latest?.type||'연락'):'접촉 기록 없음'}</small></div><h3>${esc(latest?.title||latest?.purpose||'연락 내용을 남겨 주세요')}</h3><p>${esc(focus?.summary||'등록된 내용이 없습니다. 실제 미접촉이라는 뜻은 아닙니다.')}</p>${latest?identityHTML(latest):''}</section>${conversationNotesHTML(acts)}<section class="crm-detail-block crm-next-context"><div class="crm-detail-subheading"><span>다음 행동</span></div>${tasks}</section><details class="crm-resource-section"><summary>핵심 니즈 확인</summary><div class="crm-context-grid"><section><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').join(' · ')||'등록된 니즈 없음')}</p></section></div></details></div>`;
+  const overview=`<div class="crm-detail-now"><section class="crm-detail-block"><div class="crm-detail-subheading"><span>마지막 대화</span><small>${focus?.lastContact?(dayOnlyConversationActivity(latest)?esc(focus.lastContact)+' · 시간 미상':asDate(focus.lastContact))+' · '+esc(latest?.type||'연락'):'접촉 기록 없음'}</small></div><h3>${esc(latest?.title||latest?.purpose||'연락 내용을 남겨 주세요')}</h3><p>${esc(focus?.summary||'등록된 내용이 없습니다. 실제 미접촉이라는 뜻은 아닙니다.')}</p>${latest?identityHTML(latest):''}</section>${conversationNotesHTML(acts)}<section class="crm-detail-block crm-next-context"><div class="crm-detail-subheading"><span>다음 행동</span></div>${tasks}</section><details class="crm-resource-section"><summary>핵심 니즈 확인</summary><div class="crm-context-grid"><section><p>${esc(needsItems(p.needsSummary||p.needsSource||c.needs||p.statusSummary||'').join(' · ')||'등록된 니즈 없음')}</p></section></div></details></div>`;
   const resourceParts=[['company','업체 정보·니즈',companyInfo],['people','담당자·연락처',contactPanel(c)],['opportunities','제안·견적',opportunities],['progress','연도별 진행 단계',progress],['projects','수행 과제',projectsHtml],['documents','문서',documents]];
   const resources=resourceParts.map(([key,label,html])=>`<details class="crm-resource-section" ${state.companyTab===key?'open':''}><summary>${label}</summary><div>${html}</div></details>`).join('');
   const primaryTab=['overview','activities'].includes(state.companyTab)?state.companyTab:state.companyTab==='tasks'?'overview':'resources';

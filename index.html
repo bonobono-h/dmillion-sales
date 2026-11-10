@@ -1408,7 +1408,7 @@ function cardHTML(c){
     <div class="pcs">영업 다음 일정</div>
     ${plan.length ? plan.slice(0, 2).map(p => `<div class="pcl">${dchip(p.d)}<span class="dt">${shortDate(p.d)}</span><span class="tx">${esc(p.t)}</span></div>`).join('') : `<div class="pcl"><span class="tx muted">${c.nextAction ? '날짜 미정 · ' + esc(c.nextAction) : '없음'}</span></div>`}
     <div class="pcs">히스토리 ${done.length}</div>
-    ${done.slice(0, 3).map(a => `<div class="pcl"><span class="dt">${a.date ? esc(fmtDate(a.date).slice(2, 10)) : '날짜 없음'}</span><span class="ty">${esc(a.type)}</span><span class="tx">${esc(a.title || '')}</span></div>`).join('') || '<div class="pcl"><span class="tx muted">기록 없음</span></div>'}
+    ${done.slice(0, 3).map(a => `<div class="pcl"><span class="dt">${dayOnlyConversationActivity(a)?esc(legacyActivityDate(a)):a.date ? esc(fmtDate(a.date).slice(2, 10)) : '날짜 없음'}</span><span class="ty">${esc(a.type)}</span><span class="tx">${esc(a.title || '')}</span></div>`).join('') || '<div class="pcl"><span class="tx muted">기록 없음</span></div>'}
     ${done.length > 3 ? `<button type="button" class="more" data-go="${esc(c._id)}">외 ${done.length - 3}건</button>` : ''}
   </article>`;
 }
@@ -1449,7 +1449,7 @@ function actItemHTML(a){
   const rep = REPORT_FIELDS.map(([k,l]) => [l, r[k]]).filter(([,v]) => v);
   const eq = (r.equipment||[]).filter(e => e.category || e.supplier || e.model);
   return `<li class="${a.status==='예정'?'plan':''} ${a.status==='취소'?'cancel':''}">
-    <div class="t1"><span class="date">${a.date ? fmtDate(a.date) : '날짜 미기재'}</span><span class="ty">${esc(a.type)}</span><span class="muted">${esc(a.status)}</span></div>
+    <div class="t1"><span class="date">${esc(legacyActivityDate(a)||'날짜 미기재')}</span><span class="ty">${esc(a.type)}</span><span class="muted">${esc(a.status)}</span></div>
     <div class="sm ${a.title === '(내용 미기재)' ? 'na2' : ''}"><b>${esc(a.title||'')}</b></div>
     ${a.summary ? `<div class="sm">${esc(a.summary)}</div>` : ''}
     ${a.issue ? `<div class="iss">${esc(a.issue)}</div>` : ''}
@@ -1517,10 +1517,21 @@ function protectedConversationNote(a={}) {
   return a.datePrecision==='unknown'||a.recordKind==='undated_note'||
     a.source==='dot-conversation'&&(a.type==='메모'||a.status==='확인 메모');
 }
+function dayOnlyConversationActivity(a={}) {
+  return a.source==='dot-conversation'&&a.datePrecision==='day'&&!protectedConversationNote(a);
+}
+function legacyActivityDate(a,short=false) {
+  if(dayOnlyConversationActivity(a)){
+    const date=typeof a.date==='string'?a.date:'';
+    const valid=/^\d{4}-\d{2}-\d{2}$/.test(date)&&!date.startsWith('0000')&&Number.isFinite(Date.parse(date+'T00:00:00Z'))&&new Date(date+'T00:00:00Z').toISOString().slice(0,10)===date;
+    return (valid?date:'활동일 확인 필요')+' · 시간 미상';
+  }
+  return protectedConversationNote(a)?'활동일 미상':short?rpShort(a.date):fmtDate(a.date);
+}
 function renderConversationNoteForm(c,a) {
-  const w=$('actFormWrap');
+  const w=$('actFormWrap'),dayOnly=dayOnlyConversationActivity(a);
   w.innerHTML=`<form class="f sub" id="conversationNoteF">
-    <p class="full">활동일 미상 · 확인 메모${a.sourceRef?.reportedOn?' · 대화 보고일 '+esc(a.sourceRef.reportedOn):''}${a.createdAt?' · CRM 등록 '+esc(a.createdAt):''}</p>
+    <p class="full">${esc(legacyActivityDate(a))} · ${esc(dayOnly?(a.status||'상태 확인 필요'):'확인 메모')}${a.sourceRef?.reportedOn?' · 대화 보고일 '+esc(a.sourceRef.reportedOn):''}${a.createdAt?' · CRM 등록 '+esc(a.createdAt):''}</p>
     <p class="full muted">제목과 요약만 수정합니다. 날짜·완료 상태·진행 단계·후속 기한은 바뀌지 않습니다.</p>
     <label class="full">제목<input name="title" maxlength="160" value="${esc(a.title||'')}"></label>
     <label class="full">핵심 요약<textarea name="summary" maxlength="150000">${esc(a.summary||'')}</textarea></label>
@@ -1535,7 +1546,7 @@ function renderConversationNoteForm(c,a) {
     if(title.length>160||summary.length>150000)return toast('제목 또는 본문이 너무 깁니다');
     saving=true;form.querySelector('[type=submit]').disabled=true;form.querySelector('#noteCancel').disabled=true;
     try {
-      const ok=await save(()=>db.doc('activities/'+a._id).update({title,summary,updatedAt:new Date().toISOString()}),'확인 메모를 고쳤습니다',c.name);
+      const ok=await save(()=>db.doc('activities/'+a._id).update({title,summary,updatedAt:new Date().toISOString()}),dayOnly?'활동 기록을 고쳤습니다':'확인 메모를 고쳤습니다',c.name);
       if(ok&&view.editAct===a._id&&$('conversationNoteF')===form){view.actForm=null;view.editAct=null;view.actDraft=null;renderAll();}
     } finally {saving=false;form.querySelector('[type=submit]').disabled=false;form.querySelector('#noteCancel').disabled=false;}
   };
@@ -1543,7 +1554,7 @@ function renderConversationNoteForm(c,a) {
 function actDraftFor(){
   if (view.actDraft) return view.actDraft;
   const a = view.editAct ? acts.find(x => x._id === view.editAct) || {} : {}, r = a.report || {};
-  view.actDraft = {date: toLocalInput(a.date) || (view.editAct&&protectedConversationNote(a)?'':toLocalInput(new Date().toISOString())), type: a.type || '현장 방문', title: a.title || '', summary: a.summary || '',
+  view.actDraft = {date: dayOnlyConversationActivity(a)?a.date:toLocalInput(a.date) || (view.editAct&&protectedConversationNote(a)?'':toLocalInput(new Date().toISOString())), type: a.type || '현장 방문', title: a.title || '', summary: a.summary || '',
     attendeesClient: a.attendeesClient || '', attendeesUs: a.attendeesUs || '', status: a.status || '완료', nextAction: a.nextAction || '', nextDue: a.nextDue || '',
     purpose: r.purpose || '', decisionMaker: r.decisionMaker || '', problem: r.problem || '', proposal: r.proposal || '', reaction: r.reaction || '', blockers: r.blockers || '',
     equipment: r.equipment || [], transcript: a.transcript || '', transcriptAsset: a.transcriptAsset || '',
@@ -1554,7 +1565,7 @@ function renderActForm(c){
   const w = $('actFormWrap'); if (!w) return;
   if (view.actForm !== c._id) { w.innerHTML = ''; return; }
   const existing=view.editAct&&acts.find(a=>a._id===view.editAct);
-  if(existing&&protectedConversationNote(existing)){renderConversationNoteForm(c,existing);return;}
+  if(existing&&(protectedConversationNote(existing)||dayOnlyConversationActivity(existing))){renderConversationNoteForm(c,existing);return;}
   const d = actDraftFor();
   const ta = (k, label, ph, full=true, rows=2) => `<label class="${full?'full':''}">${label}<textarea data-k="${k}" rows="${rows}" placeholder="${ph}">${esc(d[k])}</textarea></label>`;
   const eq = (d.equipment||[]).filter(e => e.category || e.supplier || e.model);
@@ -1634,7 +1645,7 @@ async function runAI(c, d){
   const ctl = new AbortController(); view.aiCtl = ctl;
   d.aiBusy = true; d.aiErr = false; d.aiMsg = '정리하는 중입니다. 보통 20초에서 1분 걸립니다.'; renderActForm(c);
   const hist = acts.filter(a => a.companyId === c._id && a._id !== view.editAct && a.status !== '취소').sort((a,b) => (b.date||'').localeCompare(a.date||'')).slice(0,6)
-    .map(a => `- ${fmtDate(a.date)} [${a.type}] ${a.title || ''}${a.summary ? ': ' + a.summary.replace(/\s+/g,' ').slice(0,200) : ''}`).join('\n');
+    .map(a => `- ${legacyActivityDate(a)} [${a.type}] ${a.title || ''}${a.summary ? ': ' + a.summary.replace(/\s+/g,' ').slice(0,200) : ''}`).join('\n');
   const t = new Date(), p2 = n => String(n).padStart(2,'0'), today = `${t.getFullYear()}-${p2(t.getMonth()+1)}-${p2(t.getDate())}`;
   const prompt = `너는 공장자동화 SI 스타트업 '디밀리언'(소량다품종 유연생산: 플렉서블 피더, 머신비전, 로봇암, AMR, 온디바이스 AI)의 B2B 영업 담당을 돕는다.
 아래 녹취록·메모를 읽고 출장·미팅 보고 초안을 JSON 하나로만 답하라.
@@ -2005,7 +2016,7 @@ function reportHTML(){
     const g = GROUP(c.stage);
     const steps = RP_STEPS.map((s, i) => `<span class="${i < reached || (stopped && i === reached) ? 'done' : !stopped && i === reached ? 'on' : ''}">${s}</span>`).join('');
     const link = [c.program, c.govLink && `지원사업 ${c.govLink}`, c.applyTiming && c.applyTiming !== '미정' && `신청 ${c.applyTiming}`].filter(Boolean).join(' · ');
-    const tl = as.length ? `<ol class="rptl">${as.map(a => `<li><span class="date">${rpShort(a.date)}</span><div><span class="ty">${esc(a.type)}</span>${esc(a.title || '')}${a.status === '예정' ? ' <span class="muted">(예정)</span>' : ''}${a.summary ? `<div class="sm">${esc(a.summary)}</div>` : ''}</div></li>`).join('')}</ol>` : '<div class="muted">기록된 접점이 없습니다.</div>';
+    const tl = as.length ? `<ol class="rptl">${as.map(a => `<li><span class="date">${esc(legacyActivityDate(a,true))}</span><div><span class="ty">${esc(a.type)}</span>${esc(a.title || '')}${a.status === '예정' ? ' <span class="muted">(예정)</span>' : ''}${a.summary ? `<div class="sm">${esc(a.summary)}</div>` : ''}</div></li>`).join('')}</ol>` : '<div class="muted">기록된 접점이 없습니다.</div>';
     return `<article class="rpcard ${stopped ? 'stopped' : ''}" id="rp-${esc(c._id)}">
       <div class="rph"><div><h4>${esc(c.name)}</h4><div class="muted">${esc([regionLabel(c), c.industry, c.channel, c.source].filter(Boolean).join(' · '))}</div></div><span class="chip"><i style="background:var(--s-${g})"></i>${esc(c.stage)}</span></div>
       <div class="rpsteps" aria-label="진행 단계">${steps}</div>
@@ -2022,7 +2033,7 @@ function reportHTML(){
     </article>`;
   };
   rpText = [`[B2B 영업 현황] ${fmtDate(now.toISOString()).slice(0,10)} 기준`, `진행 ${live} · 선정·계약 ${cnt('win')} · 보류·드랍 ${cnt('stop')}`, '',
-    ...data.filter(showCard).map(({c, as, blockers, stopped}) => [`■ ${c.name} (${c.stage})`, c.needs && `- 니즈: ${c.needs}`, c.nextAction && `- 다음: ${c.nextAction}`, blockers.length && `- ${stopped ? '보류 사유' : '막힌 점'}: ${blockers.join(' / ')}`, as.length && `- 히스토리: ${as.slice().reverse().map(a => `${rpShort(a.date)} ${a.type}`).join(' → ')}`].filter(Boolean).join('\n') + '\n')].join('\n');
+    ...data.filter(showCard).map(({c, as, blockers, stopped}) => [`■ ${c.name} (${c.stage})`, c.needs && `- 니즈: ${c.needs}`, c.nextAction && `- 다음: ${c.nextAction}`, blockers.length && `- ${stopped ? '보류 사유' : '막힌 점'}: ${blockers.join(' / ')}`, as.length && `- 히스토리: ${as.slice().reverse().map(a => `${legacyActivityDate(a,true)} ${a.type}`).join(' → ')}`].filter(Boolean).join('\n') + '\n')].join('\n');
   return `<div class="rp-top"><div><h3>B2B 영업 현황 보고</h3><div class="muted">${esc(fmtDate(now.toISOString()).slice(0,10))} 기준 · 고객사 ${cust.length}곳 · 전략사업부</div></div><button class="btn" type="button" id="rpCopy">보고 내용 복사</button></div>
     <div class="rp-copy" id="rpCopyBox" ${rpShowText ? '' : 'hidden'}><label class="muted" for="rpTxt">자동 복사가 막혀 있어요. 아래 내용을 선택해 복사하세요.</label><textarea id="rpTxt" readonly>${esc(rpText)}</textarea></div>
     <div class="rp-kpis">${kpis.map(([v, l]) => `<div class="rp-kpi"><b>${v}</b><span>${l}</span></div>`).join('')}</div>
@@ -2907,7 +2918,7 @@ async function exportXlsx(){
     });
     const nameOf = id => companies.find(c => c._id === id)?.name || '';
     const actRows = acts.filter(a => nameOf(a.companyId)).sort((a,b) => nameOf(a.companyId).localeCompare(nameOf(b.companyId),'ko') || String(b.date || '').localeCompare(String(a.date || ''))).map(a => ({
-      '업체명':nameOf(a.companyId), '날짜':fmtDate(a.date), '유형':a.type || '', '상태':a.status || '', '제목':a.title || '', '요약':a.summary || '', '이슈':a.issue || '',
+      '업체명':nameOf(a.companyId), '날짜':legacyActivityDate(a), '유형':a.type || '', '상태':a.status || '', '제목':a.title || '', '요약':a.summary || '', '이슈':a.issue || '',
       '참석(고객)':a.attendeesClient || '', '참석(디밀리언)':a.attendeesUs || '', '다음 액션':a.nextAction || '', '다음 기한':a.nextDue || ''}));
     const progRows = progNodes().map(n => ({'사업':n.title, '종류':PG_TIER_LABEL[n.t] || '', '설명':n.sub || '', '디밀리언 역할':n.us || '', '연결된 업체':linkedCos(n.id).map(c => c.name).sort((a,b) => a.localeCompare(b,'ko')).join(', ')}));
     const wb = X.utils.book_new();

@@ -27,7 +27,7 @@ test('legacy application matches the reviewed date-safety editor revision',()=>{
  const original=Buffer.from(html.replace(script[0],''));
  const sha=createHash('sha1').update('blob '+original.length+'\0').update(original).digest('hex');
  // Intentional date-safety editor patch; regression/DOM tests cover its behavior.
- assert.equal(sha,'8a7d6370b522e6538134f803c0ced314742cdc8a');
+ assert.equal(sha,'d0164f4c5f9557c4570482144a926abb620d62bd');
 });
 test('new CRM keeps explicit routes to legacy documents and projects',async()=>{
  const [app,page]=await Promise.all(['crm2.js','crm2.html'].map(path=>readFile(new URL('../'+path,import.meta.url),'utf8')));

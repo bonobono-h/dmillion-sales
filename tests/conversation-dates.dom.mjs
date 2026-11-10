@@ -20,6 +20,7 @@ const source=await fs.readFile(new URL('crm2.js',root),'utf8');
 const moduleFile=new URL('.date-safety-dom-check.mjs',root);
 await fs.writeFile(moduleFile,source.replace(/boot\(\);\s*$/,'await boot();\nexport {state,render,selectCompany,renderActivities,renderTimelineDetail};'));
 const note={_id:'date-note',companyId:'date-company',source:'dot-conversation',recordKind:'undated_note',type:'메모',status:'확인 메모',date:null,datePrecision:'unknown',meetingRecord:false,title:'가상 고객 대화 보고',summary:'실제 활동일이 언급되지 않은 확인 메모',sourceActor:{kind:'service',id:'dot',label:'dot'},sourceRef:{conversationId:'test-thread',messageId:'test-message',eventId:'test-event',reportedOn:'2026-11-09',reportedAt:'2026-11-09T06:00:00Z',timeZone:'Asia/Seoul'},createdAt:'2026-11-10T01:00:00Z'};
+const dayVisit={...note,_id:'day-visit',recordKind:'completed_activity',type:'현장 방문',status:'완료',date:'2026-11-09',datePrecision:'day',title:'시간을 모르는 실제 방문',summary:'활동 날짜만 확인됨',nextDue:null};
 try{
  const app=await import(pathToFileURL(moduleFile.pathname).href);
  const company={_id:'date-company',name:'[가상] 날짜 확인',kind:'고객사',stage:'리드'};
@@ -33,6 +34,20 @@ try{
  const timeline=app.renderTimelineDetail(buildTimelineRows([company],[note],[],[],{today:'2026-11-10'})[0]);assert.match(timeline,/활동일 미상/);assert.match(timeline,/대화 보고일/);assert.match(timeline,/CRM 등록/);
  if(process.env.CRM_DATE_FIXTURE_OUTPUT)await fs.writeFile(process.env.CRM_DATE_FIXTURE_OUTPUT,`<!doctype html><html lang="ko"><meta charset="utf-8"><title>Undated note local fixture</title><body><h1>현재 상황의 대화 정리</h1>${overviewHTML}<h2>활동일 미상 표시</h2>${entry.outerHTML}<h2>전체 활동</h2>${table}<h2>타임라인</h2>${timeline}</body></html>`);
  console.log('PASS main CRM2 detail/table/timeline visibly distinguish unknown, reported and CRM dates; repeated rendering does not mutate record');
+ app.state.activities.push(dayVisit);app.state.companyTab='overview';app.render();
+ const contactBlock=document.querySelector('.crm-detail-now > .crm-detail-block');
+ assert.match(contactBlock.textContent,/2026-11-09 · 시간 미상/);assert.match(contactBlock.textContent,/시간을 모르는 실제 방문/);
+ assert.equal(document.querySelector('[data-conversation-note=day-visit]'),null,'completed day-only visit is not an informational note');
+ document.querySelector('[data-action=company-tab][data-tab=activities]').click();
+ const visitEntry=document.querySelector('[data-activity-id=day-visit]');
+ assert.equal(visitEntry.querySelector('.crm-activity-event-date').textContent,'2026-11-09 · 시간 미상');
+ assert.match(visitEntry.textContent,/완료/);assert.doesNotMatch(visitEntry.querySelector('.crm-activity-event-date').textContent,/00:00|09:00|오전|오후|2026-11-08|2026-11-10/);
+ const visitTableDOM=new JSDOM(app.renderActivities());
+ const visitRow=[...visitTableDOM.window.document.querySelectorAll('tbody tr')].find(row=>row.textContent.includes(dayVisit.title));
+ assert.equal(visitRow.querySelector('.crm-activity-event-date').textContent,'2026-11-09 · 시간 미상');visitTableDOM.window.close();
+ const visitTimeline=app.renderTimelineDetail(buildTimelineRows([company],[dayVisit],[],[],{today:'2026-11-10'})[0]);assert.match(visitTimeline,/2026-11-09 · 시간 미상/);
+ console.log('PASS completed day-only visit shows literal day and 시간 미상 in current detail/history/table/timeline without clock or timezone shift');
+
  // Run the actual patched legacy editor functions, with an isolated fake database.
  const legacyHtml=await fs.readFile(new URL('index.html',root),'utf8');
  const legacyFunctions=legacyHtml.slice(legacyHtml.indexOf('function protectedConversationNote('),legacyHtml.indexOf('\nasync function runAI('));
@@ -60,6 +75,25 @@ try{
  const originalSummary=clone.summary;clone.summary='긴 내용'.repeat(40000);form=reset();assert.equal(form.elements.summary.value,clone.summary);await form.onsubmit({preventDefault(){}});assert.equal(writes.length,4);assert.equal(view.editAct,null);clone.summary=originalSummary;
  form=reset();form.elements.summary.value='읽기 전용 변경 금지';ctx.cw=()=>false;await form.onsubmit({preventDefault(){}});assert.equal(writes.length,4);ctx.cw=()=>true;
  assert.equal(clone.sourceActor.id,'dot');assert.equal(clone.createdBy,undefined);assert.equal(networkCalls,0);
+
+ // The same protected title/summary editor must preserve completed day-only facts.
+ const visitClone=structuredClone(dayVisit);visitClone._raw=structuredClone(dayVisit);ctx.acts.push(visitClone);
+ const resetVisit=()=>{view.editAct=visitClone._id;view.actForm=company._id;view.actDraft=null;ctx.renderActForm(company);return ctx.$('conversationNoteF');};
+ const writesBefore=writes.length;form=resetVisit();assert.ok(form);
+ assert.match(form.querySelector('p').textContent,/2026-11-09 · 시간 미상 · 완료/);assert.doesNotMatch(form.querySelector('p').textContent,/활동일 미상|확인 메모/);
+ for(const selector of ['[type=datetime-local]','[data-k=status]','[data-k=sync]','[data-k=applyStage]','[data-k=nextDue]'])assert.equal(form.querySelector(selector),null);
+ const facts=JSON.stringify(visitClone);await form.onsubmit({preventDefault(){}});assert.equal(writes.length,writesBefore);assert.equal(JSON.stringify(visitClone),facts);
+ form=resetVisit();form.elements.title.value='방문 제목 수정';form.elements.summary.value='확인된 요약 수정';await form.onsubmit({preventDefault(){}});
+ assert.equal(writes.length,writesBefore+1);assert.equal(writes.at(-1).path,'activities/day-visit');assert.deepEqual(Object.keys(writes.at(-1).data).sort(),['summary','title','updatedAt']);
+ const savedVisit={...visitClone,...writes.at(-1).data};
+ for(const key of ['date','datePrecision','status','recordKind','type','source','sourceActor','sourceRef','createdAt','nextDue'])assert.deepEqual(savedVisit[key],visitClone[key],key+' must survive edited save');
+ assert.equal(savedVisit.date,'2026-11-09');assert.equal(savedVisit.status,'완료');assert.equal(savedVisit.datePrecision,'day');assert.equal(ctx.protectedConversationNote(savedVisit),false);
+ assert.equal(ctx.legacyActivityDate(savedVisit),'2026-11-09 · 시간 미상');assert.equal(ctx.legacyActivityDate(savedVisit,true),'2026-11-09 · 시간 미상');
+ // Evaluate actual legacy read-card code too, not a reconstructed template.
+ const actItemCode=legacyHtml.slice(legacyHtml.indexOf('function actItemHTML('),legacyHtml.indexOf('\nfunction opt('));
+ ctx.REPORT_FIELDS=[];ctx.eqLabel=()=>'';vm.runInContext(actItemCode,ctx);
+ const legacyCardDOM=new JSDOM(ctx.actItemHTML(savedVisit));assert.equal(legacyCardDOM.window.document.querySelector('.date').textContent,'2026-11-09 · 시간 미상');assert.match(legacyCardDOM.window.document.querySelector('.t1').textContent,/완료/);legacyCardDOM.window.close();
+ console.log('PASS legacy read-card and unchanged/edited day-only visit preserve actual day, completed status, precision and source metadata; no stage/deadline writes');
  legacyDOM.window.close();
  console.log('PASS actual legacy note editor unchanged-save, edit, cancel, failure/retry and double-submit preserve date/status/source; fake DB writes only title/summary/updatedAt');
  console.log('PASS no network/authentication/production writes');
