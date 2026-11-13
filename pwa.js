@@ -1,6 +1,6 @@
 (()=>{
   if('serviceWorker' in navigator){
-    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261110-conversation-1',{scope:'./',updateViaCache:'none'}).catch(()=>{}),{once:true});
+    addEventListener('load',()=>navigator.serviceWorker.register('./sw.js?v=20261113-pipeline-1',{scope:'./',updateViaCache:'none'}).catch(()=>{}),{once:true});
   }
 
   const ua=navigator.userAgent||'';

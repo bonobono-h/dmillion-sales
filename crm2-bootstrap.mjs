@@ -1,4 +1,4 @@
-export const CRM_RELEASE='20261110-conversation-1';
+export const CRM_RELEASE='20261113-pipeline-1';
 const WORKER_URL='./sw.js?v='+CRM_RELEASE;
 
 function isReleaseWorker(worker,baseURL){

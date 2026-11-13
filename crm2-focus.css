@@ -669,3 +669,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .crm-text-revisions summary { cursor: pointer; padding: 8px 0; }
 .crm-text-revisions article { border-top: 1px solid #e5e7f1; padding: 10px 0; }
 .crm-text-revisions pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; tab-size: 4; }
+
+/* Scan customers without opening each card. Original text remains in detail. */
+.crm-pipeline-table {min-width:1000px;table-layout:fixed;width:100%}
+.crm-pipeline-table th:nth-child(1){width:16%}.crm-pipeline-table th:nth-child(2){width:15%}.crm-pipeline-table th:nth-child(3){width:12%}.crm-pipeline-table th:nth-child(4){width:27%}.crm-pipeline-table th:nth-child(5){width:30%}
+.crm-pipeline-table td{vertical-align:top;overflow-wrap:anywhere;white-space:normal}
+.crm-pipeline-table td p{margin:0 0 6px;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-line}

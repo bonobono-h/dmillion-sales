@@ -1,6 +1,6 @@
-const RELEASE='20261110-conversation-1';
+const RELEASE='20261113-pipeline-1';
 const CACHE='dmillion-crm-ios-'+RELEASE;
-const SHELL=['./crm2.html','./crm2.css','./crm2.js','./crm2-bootstrap.mjs','./crm2-workflow.css','./crm2-review.mjs','./crm2-live.mjs','./crm2-focus.mjs','./crm2-board.mjs','./crm2-identity.mjs','./crm2-focus.css','./crm2-search.mjs','./crm2-calendar.mjs','./crm2-calendar.css','./crm2-updates.mjs','./crm2-updates.css','./pwa.js','./config.js','./supabase.js','./bridge.js','./crm2-demo.mjs','./crm2-agent.js','./crm2-agent-core.mjs','./crm2-core.mjs','./crm2-coverage.mjs','./crm2-intake.js','./crm2-intake-core.mjs','./crm2-timeline.mjs','./crm2-records.mjs','./crm2-performance.mjs','./manifest.webmanifest','./icons/dmillion-app.svg','./icons/dmillion-app-180.png','./icons/dmillion-app-192.png','./icons/dmillion-app-512.png'];
+const SHELL=['./crm2.html','./crm2.css','./crm2.js','./crm2-bootstrap.mjs','./crm2-workflow.css','./crm2-review.mjs','./crm2-live.mjs','./crm2-focus.mjs','./crm2-pipeline.mjs','./crm2-board.mjs','./crm2-identity.mjs','./crm2-focus.css','./crm2-search.mjs','./crm2-calendar.mjs','./crm2-calendar.css','./crm2-updates.mjs','./crm2-updates.css','./pwa.js','./config.js','./supabase.js','./bridge.js','./crm2-demo.mjs','./crm2-agent.js','./crm2-agent-core.mjs','./crm2-core.mjs','./crm2-coverage.mjs','./crm2-intake.js','./crm2-intake-core.mjs','./crm2-timeline.mjs','./crm2-records.mjs','./crm2-performance.mjs','./manifest.webmanifest','./icons/dmillion-app.svg','./icons/dmillion-app-180.png','./icons/dmillion-app-192.png','./icons/dmillion-app-512.png'];
 const shellPaths=new Set(SHELL.map(path=>new URL(path,self.location.href).pathname));
 const crmURL=new URL('./crm2.html',self.location.href);
 
