@@ -828,12 +828,12 @@ header.top .role{border:0;padding:0;background:none}
 .kwarn .kh b,.kwarn .kh .kn{color:var(--warn)}
 .kwarn .ci{border-bottom-color:color-mix(in srgb,var(--warn) 25%,transparent)}
 </style>
-<link rel="stylesheet" href="legacy-readable.css?v=20261110-legacy-note-1">
+<link rel="stylesheet" href="legacy-readable.css?v=20261113-legacy-ux-1">
 
 <header class="top">
   <div class="topbar">
     <h1>디밀리언 영업 관리 <small id="asof">영업팀 업무 센터</small></h1>
-    <nav class="tabs" id="tabs" aria-label="메뉴"></nav>
+    <nav class="tabs" id="tabs" aria-label="메뉴"></nav><a class="btn legacy-new-workspace" href="crm2.html?view=focus">새 영업현황 ↗</a>
     <div class="hright">
       <span class="role" id="role">권한 확인 중</span>
       <span class="today" id="todayLbl"></span>
@@ -864,7 +864,7 @@ header.top .role{border:0;padding:0;background:none}
           <select id="fOwner" aria-label="담당자 필터"><option value="">전체 담당자</option></select>
           <select id="fSort" aria-label="정렬"><option value="last">최근 컨택순</option><option value="next">다음 일정순</option><option value="first">최초 컨택 오래된순</option><option value="cnt">컨택 많은순</option><option value="name">이름순</option></select>
           <label class="chk"><input type="checkbox" id="fStar"> ★★ 중요만</label>
-          <button class="btn primary" id="addBtn" type="button">+ 업체 추가</button>
+          <button class="btn" id="clearFilters" type="button">필터 초기화</button><button class="btn primary" id="addBtn" type="button">+ 업체 추가</button>
         </div>
       </section>
       <section class="card" id="listCard">
@@ -1272,6 +1272,7 @@ function renderDetail(){
   calReg.co = {events: () => coEvents(c), link:false};
   card.innerHTML = `
     <div class="detail">
+      <div class="legacy-detail-scan"><span>업체 상세</span><button type="button" class="btn" id="expandDetail">내용 모두 펼치기</button><button type="button" class="btn" id="collapseDetail">내용 모두 접기</button></div>
       <div class="dtitle"><h3>${esc(c.name)}</h3>${c.star ? '<span class="star" title="중요 업체">★★</span>' : ''}${PART(c) ? '<span class="kindtag">협력사</span>' : ''}<span class="chip"><i style="background:var(--s-${COLOR(c)})"></i>${esc(c.stage)}</span>
         ${STEP_OF[c.stage] ? `<span class="muted">영업 7단계 ${STEP_OF[c.stage]}</span>` : ''}
         <span style="flex:1"></span>
@@ -1939,7 +1940,9 @@ async function genQuote(b, c, f){
 function renderTabs(){
   const list = [['home','한눈에 보기'], ['list','업체 관리'], ['proj','과제'], ['dash','실적'], ['map','지도'], ['programs','지원사업'], ['report','대표 보고'], ['analysis','분석'], ...(isAdmin ? [['suppliers','공급사'], ['repertoire','레퍼토리']] : []), ...(isAdmin || canWrite === true ? [['log','권한·변경 기록']] : [])];
   if (!list.some(([k]) => k === tab)) tab = 'home';
-  $('tabs').innerHTML = list.map(([k,l]) => `<button type="button" class="tab ${tab===k?'on':''}" data-tab="${k}" aria-pressed="${tab===k}">${l}</button>`).join('');
+  const primary=new Set(['home','list','proj','report']);
+  const navButton=([k,l])=>`<button type="button" class="tab ${tab===k?'on':''}" data-tab="${k}" aria-pressed="${tab===k}">${l}</button>`;
+  $('tabs').innerHTML=list.filter(([k])=>primary.has(k)).map(navButton).join('')+`<details class="legacy-more-nav"><summary>추가 메뉴${primary.has(tab)?'':' · '+esc(list.find(([k])=>k===tab)?.[1]||'')}</summary><div>${list.filter(([k])=>!primary.has(k)).map(navButton).join('')}</div></details>`;
   const PT = {home:'전 업체 한눈에 보기', list:'업체 관리', proj:'과제 관리', dash:'영업 실적', map:'지역별 업체 지도', programs:'지원사업 기관 지도', report:'대표 보고', analysis:'영업 분석', suppliers:'공급사', repertoire:'업종별 레퍼토리', log:'권한·변경 기록'};
   $('ptitle').textContent = PT[tab] || '';
   $('tabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; view.supEdit = null; scrollTo({top:0}); try { localStorage.setItem('dm.tab2', tab); } catch {} renderAll(); });
@@ -3060,6 +3063,15 @@ function renderAll(){
 $('fStage').innerHTML += STAGES.map(s => `<option>${s}</option>`).join('');
 ['q','fStage','fCh','fSort','fStar','fOwner'].forEach(id => $(id).addEventListener('input', () => { renderList(); }));
 $('fStar').addEventListener('change', () => renderList());
+$('clearFilters').onclick = () => {
+  ['q','fStage','fCh','fOwner'].forEach(id => $(id).value='');
+  $('fStar').checked=false; $('fSort').value='last'; view.bucket='all'; view.prov=null; view.muni=null;
+  renderAll(); $('q').focus();
+};
+$('detailCard').addEventListener('click', event => {
+  const id=event.target.closest('button')?.id;
+  if(id==='expandDetail'||id==='collapseDetail') $('detailCard').querySelectorAll('details').forEach(el=>el.open=id==='expandDetail');
+});
 $('exportBtn').onclick = () => exportXlsx();
 $('addBtn').onclick = () => { view.form = {mode:'new'}; view.sel = null; renderAll(); $('formCard').scrollIntoView({block:'nearest'}); };
 renderLegend();

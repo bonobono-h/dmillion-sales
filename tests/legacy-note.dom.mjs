@@ -42,6 +42,14 @@ async function open(){const button=$('#addAct');assert.ok(button);button.click()
 async function artifact(name){if(!process.env.CRM_LEGACY_NOTE_FIXTURE_DIR)return;await fs.mkdir(process.env.CRM_LEGACY_NOTE_FIXTURE_DIR,{recursive:true});const copy=document.documentElement.cloneNode(true);copy.querySelectorAll('script,link').forEach(n=>n.remove());const style=document.createElement('style');style.textContent=await fs.readFile(new URL('legacy-readable.css',root),'utf8');copy.querySelector('head').append(style);copy.querySelectorAll('textarea').forEach((area,i)=>area.textContent=document.querySelectorAll('textarea')[i].value);await fs.writeFile(`${process.env.CRM_LEGACY_NOTE_FIXTURE_DIR}/${name}.html`,'<!doctype html>'+copy.outerHTML);}
 try{
  const app=await import(pathToFileURL(moduleURL.pathname).href);await tick();assert.equal(app.legacyNoteState().userId,activeId);assert.equal(app.legacyNoteState().canWrite,true);assert.equal(mapReads,1);app.select('c');
+ assert.equal(document.querySelectorAll('#tabs > button').length,4);
+ assert.ok(document.querySelector('#tabs .legacy-more-nav [data-tab=analysis]'));
+ assert.equal(document.querySelector('.legacy-new-workspace').getAttribute('href'),'crm2.html?view=focus');
+ $('#expandDetail').click();assert.ok([...document.querySelectorAll('#detailCard details')].every(el=>el.open));
+ $('#collapseDetail').click();assert.ok([...document.querySelectorAll('#detailCard details')].every(el=>!el.open));
+ $('#q').value='no matches';$('#fOwner').value='__none';$('#fStar').checked=true;$('#clearFilters').click();
+ assert.equal($('#q').value,'');assert.equal($('#fOwner').value,'');assert.equal($('#fStar').checked,false);assert.equal(writes.length,0);
+ console.log('PASS legacy compact navigation, expand/collapse and filter reset preserve data');
  const c=()=>app.legacyTextState().companies.find(row=>row._id==='c');const metrics=()=>({count:app.contactCount(c()),first:app.firstContact(c()),last:app.lastContact(c()),calendar:app.coEvents(c()),schedule:app.homeSchedule(),week:app.weekItems('2020-01-01','2030-12-31'),upcoming:app.upcoming(),stage:c().stage,nextAction:c().nextAction,nextDate:c().nextDate});const before=metrics();
  assert.equal($('#addAct').textContent,'+ 메모 남기기');assert.ok($('#addStructuredAct').closest('details'));assert.equal($('#actF'),null);
  let form=await open();assert.equal(form.querySelectorAll('textarea').length,1);assert.equal(form.querySelectorAll('input,select').length,0);assert.equal(document.activeElement,$('#legacyNoteText'));assert.equal($('#legacyNoteSave').textContent,'저장');assert.equal($('#legacyNoteText').hasAttribute('maxlength'),false);

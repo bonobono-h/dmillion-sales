@@ -26,9 +26,9 @@ test('explicit legacy tools and auth callback hashes are not redirected',()=>{
 test('legacy application matches the reviewed safe text editing and freeform note revision',()=>{
  const original=Buffer.from(html.replace(script[0],''));
  const sha=createHash('sha1').update('blob '+original.length+'\0').update(original).digest('hex');
- // Reviewed direct editing, freeform notes, readable history and routing/date safeguards.
+ // Reviewed direct editing/date safeguards plus Nov 13 navigation, filter reset and disclosure-only controls.
  // Synthetic note/legacy/CAS and date DOM suites cover the intended behavior.
- assert.equal(sha,'8df3b2d6c1a46d52649936783d856b464ee2a679');
+ assert.equal(sha,'cf24fc348f01a7e67961d2b879c8f4fc80f72532');
 });
 test('new CRM keeps explicit routes to legacy documents and projects',async()=>{
  const [app,page]=await Promise.all(['crm2.js','crm2.html'].map(path=>readFile(new URL('../'+path,import.meta.url),'utf8')));

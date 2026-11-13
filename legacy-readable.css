@@ -53,3 +53,13 @@
 #detailCard .legacy-note-card .date{font-weight:600}
 .legacy-note-panel textarea{min-height:260px}
 #legacyNoteHint{font-size:12px;line-height:1.6;margin:10px 0}
+
+/* Keep everyday navigation small; preserve every specialist workflow. */
+.legacy-more-nav{position:relative}.legacy-more-nav>summary{cursor:pointer;padding:7px 12px;font-size:13px;font-weight:600;list-style:none}
+.legacy-more-nav>summary::after{content:' ▾'}.legacy-more-nav>div{position:absolute;z-index:80;top:100%;right:0;min-width:200px;display:grid;gap:5px;background:var(--surface,#fff);border:1px solid var(--line,#ddd);box-shadow:0 10px 30px #1112;padding:10px;border-radius:10px}
+.legacy-more-nav>div .tab{text-align:left;padding:10px 12px;min-height:24px}
+.legacy-new-workspace{text-decoration:none;white-space:nowrap}
+.legacy-detail-scan{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;padding-bottom:12px;border-bottom:1px solid var(--line,#ddd)}
+.legacy-detail-scan>span{margin-right:auto;color:var(--ink2);font-weight:600}
+#clearFilters{white-space:nowrap}#toolCard .toolbar input[type=search]{min-width:180px;flex:1}
+@media(max-width:700px){.legacy-more-nav>div{left:0;right:auto}.legacy-detail-scan button,.legacy-new-workspace,#clearFilters{min-height:44px}.legacy-detail-scan>span{width:100%}}
